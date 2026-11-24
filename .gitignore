@@ -1,0 +1,5 @@
+node_modules
+.swarm
+.impeccable
+data/city.json
+.env*

@@ -1,0 +1,13 @@
+{
+  "name": "shin-ai-tokyo",
+  "version": "2.0.0",
+  "description": "Shin-AI Tokyo — Groeiende 3D AI-Stad",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

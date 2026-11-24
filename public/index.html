@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#111722">
+  <title>Shin-AI Tokyo — AI-Stadsbouw</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2312161e'/%3E%3Cpath d='M7 24h18M10 24V12l6-4 6 4v12M13 24v-6h6v6M16 8V5' fill='none' stroke='%2334d399' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Full-Viewport 3D Tokyo City Canvas -->
+  <main class="stage" aria-label="Shin-AI Tokyo 3D-stad">
+    <canvas id="city-canvas" tabindex="0" aria-label="Interactieve 3D-kaart van Shin-AI Tokyo"></canvas>
+  </main>
+
+  <!-- Top Architectural Command Bar -->
+  <header class="topbar" role="banner">
+    <div class="topbar-brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3.5 20.5h17"></path>
+          <path d="M6 20.5V10.5l4-2.5v12.5"></path>
+          <path d="M10 20.5V6.5l4-2v16"></path>
+          <path d="M14 20.5V11l4 1.8v7.7"></path>
+          <path d="M12 4.5V2.5"></path>
+        </svg>
+      </div>
+      <h1 class="brand-title">Shin-AI Tokyo</h1>
+      <div id="connection-status" class="conn-pill" data-state="connecting" role="status" aria-live="polite" title="Live verbinding met de stadsserver">
+        <span class="conn-dot" aria-hidden="true"></span>
+        <span class="conn-label">Verbinden…</span>
+      </div>
+      <button type="button" id="btn-city-progress" class="city-progress-pill" title="Open stadsregister en mijlpalen">
+        <span id="city-progress-text" class="city-progress-text tabular">Niv. 1 · Kustdorp · 0 gebouwen</span>
+        <span class="city-progress-track" aria-hidden="true">
+          <span id="city-progress-fill" class="city-progress-fill" style="width: 0%"></span>
+        </span>
+      </button>
+    </div>
+
+    <nav class="topbar-filters" aria-label="Filter AI-bouwers op status">
+      <button type="button" class="filter-pill is-active" data-filter="all" aria-pressed="true" title="Toon alles (toets 1)">
+        <span class="filter-label">Alle</span>
+        <span class="filter-count" data-count="total">0</span>
+      </button>
+      <button type="button" class="filter-pill" data-filter="working" aria-pressed="false" title="Aan het werk (toets 2)">
+        <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 15h12M6 15V4.5l7.5 2.5"></path>
+          <path d="M12.5 7v3.5"></path>
+          <path d="M11 10.5h3"></path>
+        </svg>
+        <span class="filter-label">Aan het werk</span>
+        <span class="filter-count" data-count="working">0</span>
+      </button>
+      <button type="button" class="filter-pill" data-filter="waiting" aria-pressed="false" title="Wacht op mij (toets 3)">
+        <span class="waiting-beacon" aria-hidden="true"></span>
+        <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 2.8 15.2 14H2.8L9 2.8Z"></path>
+          <path d="M9 7v3.2"></path>
+          <circle cx="9" cy="12" r="0.6" fill="currentColor"></circle>
+        </svg>
+        <span class="filter-label">Wacht op mij</span>
+        <span class="filter-count" data-count="waiting">0</span>
+      </button>
+      <button type="button" class="filter-pill" data-filter="done" aria-pressed="false" title="Klaar — opgeleverde gebouwen (toets 4)">
+        <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="9" cy="9" r="6.2"></circle>
+          <path d="M6.4 9.2 8.2 11l3.6-3.8"></path>
+        </svg>
+        <span class="filter-label">Klaar</span>
+        <span class="filter-count" data-count="done">0</span>
+      </button>
+      <button type="button" class="filter-pill" data-filter="sleeping" aria-pressed="false" title="Slaapt — inactieve kavels (toets 5)">
+        <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M13.6 10.9A5.4 5.4 0 0 1 7.1 4.4a5.6 5.6 0 1 0 6.5 6.5Z"></path>
+        </svg>
+        <span class="filter-label">Slaapt</span>
+        <span class="filter-count" data-count="sleeping">0</span>
+      </button>
+    </nav>
+
+    <div class="topbar-actions">
+      <button type="button" id="btn-projects" class="btn-subtle" aria-expanded="false" aria-controls="projects-modal" title="Importeer bestaande lokale projecten als gebouwen">
+        <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2.5 5.2a1.2 1.2 0 0 1 1.2-1.2h3.4l1.5 1.8h5.7a1.2 1.2 0 0 1 1.2 1.2v6.6a1.2 1.2 0 0 1-1.2 1.2H3.7a1.2 1.2 0 0 1-1.2-1.2V5.2Z"></path>
+          <path d="M9 8.2v4.2M7 10.2h4"></path>
+        </svg>
+        <span class="btn-label-projects">Projecten</span>
+      </button>
+      <button type="button" id="btn-build-order" class="btn-primary" aria-expanded="false" aria-controls="build-popover">
+        <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 4v10M4 9h10"></path>
+        </svg>
+        <span class="btn-label">Bouwopdracht</span>
+      </button>
+      <button type="button" id="btn-audio" class="btn-subtle" aria-pressed="false" title="Geluidssignalen aan- of uitzetten">
+        <svg id="icon-audio-off" class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.2 7.2h2.6l3.4-2.8v9.2l-3.4-2.8H3.2V7.2Z"></path>
+          <path d="m12.3 7.2 3.2 3.6M15.5 7.2l-3.2 3.6"></path>
+        </svg>
+        <svg id="icon-audio-on" class="icon is-hidden" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.2 7.2h2.6l3.4-2.8v9.2l-3.4-2.8H3.2V7.2Z"></path>
+          <path d="M12.2 6.6a3.4 3.4 0 0 1 0 4.8"></path>
+          <path d="M14.3 4.6a6.2 6.2 0 0 1 0 8.8"></path>
+        </svg>
+        <span class="btn-label-audio">Geluid</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Toast Notification Stack -->
+  <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- Build Order & Simulation Popover -->
+  <section id="build-popover" class="panel build-popover is-hidden" role="dialog" aria-labelledby="build-title" aria-modal="false">
+    <div class="panel-header">
+      <h2 id="build-title" class="panel-title">Nieuwe bouwopdracht</h2>
+      <button type="button" id="btn-build-close" class="btn-icon" aria-label="Sluit bouwopdrachtpaneel">
+        <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m4.5 4.5 9 9M13.5 4.5l-9 9"></path>
+        </svg>
+      </button>
+    </div>
+
+    <form id="build-form" class="build-form" novalidate>
+      <div class="field">
+        <label for="build-name">Naam van project of AI-taak</label>
+        <input id="build-name" name="name" type="text" maxlength="60" placeholder="Bijv. Shibuya API-toren" autocomplete="off">
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="build-type">Type bouwwerk</label>
+          <select id="build-type" name="buildingType">
+            <option value="auto">Automatisch</option>
+            <option value="huis">Huis</option>
+            <option value="flat">Flat</option>
+            <option value="wolkenkrabber">Wolkenkrabber</option>
+            <option value="mall">Winkelcentrum (Mall)</option>
+            <option value="infrastructuur">Infrastructuur</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="build-status">Startstatus</label>
+          <select id="build-status" name="status">
+            <option value="working">Aan het werk</option>
+            <option value="waiting">Wacht op mij</option>
+            <option value="done">Klaar (direct opleveren)</option>
+            <option value="sleeping">Slaapt</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="build-summary">Omschrijving</label>
+        <input id="build-summary" name="summary" type="text" maxlength="140" placeholder="Wat wordt er gebouwd of opgelost?" autocomplete="off">
+      </div>
+
+      <button type="submit" class="btn-primary btn-full">Start bouwopdracht</button>
+    </form>
+
+    <div class="panel-divider"></div>
+
+    <div class="sim-section">
+      <h3 class="section-heading">Stadssimulatie</h3>
+      <p class="section-copy">Laat de stad direct groeien met afgeronde bouwwerken of test met extra AI-bouwers.</p>
+      <div class="sim-actions">
+        <button type="button" id="btn-demo-build-one" class="btn-emerald btn-compact btn-span-2">
+          <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3.5 15h11M6 15V7.5l3-2 3 2V15M9 2.5v2"></path>
+          </svg>
+          <span>Bouw 1 gebouw af</span>
+        </button>
+        <button type="button" id="btn-demo-seed" class="btn-subtle btn-compact">Laad 6 AI-bouwers</button>
+        <button type="button" id="btn-demo-cycle" class="btn-subtle btn-compact">Simuleer stap</button>
+        <button type="button" id="btn-demo-clear" class="btn-subtle btn-compact btn-span-2">Wis demo-bouwers</button>
+      </div>
+    </div>
+
+    <div class="panel-divider"></div>
+
+    <div class="danger-section">
+      <button type="button" id="btn-city-reset" class="btn-danger-subtle btn-compact btn-full" data-confirm="false">Reset stad (0 gebouwen)</button>
+      <p id="build-feedback" class="feedback-line" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <!-- Left Collapsible Stadsregister Drawer -->
+  <aside id="register-drawer" class="panel register-drawer is-closed" aria-label="Stadsregister van Shin-AI Tokyo" aria-hidden="true">
+    <div class="panel-header">
+      <h2 class="panel-title">Stadsregister</h2>
+      <button type="button" id="btn-register-close" class="btn-icon" aria-label="Sluit stadsregister">
+        <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m4.5 4.5 9 9M13.5 4.5l-9 9"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div class="register-tabs" role="tablist" aria-label="Weergave stadsregister">
+      <button type="button" id="tab-active" class="register-tab is-active" role="tab" aria-selected="true" data-tab="active">
+        <span>Actief</span>
+        <span id="tab-active-count" class="count-pill tabular">0</span>
+      </button>
+      <button type="button" id="tab-city" class="register-tab" role="tab" aria-selected="false" data-tab="city">
+        <span>Stad</span>
+        <span id="tab-city-count" class="count-pill tabular">0</span>
+      </button>
+    </div>
+
+    <div class="register-search-wrap">
+      <svg class="search-icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="8.2" cy="8.2" r="5.1"></circle>
+        <path d="m12.1 12.1 3.3 3.3"></path>
+      </svg>
+      <input id="register-search" type="search" placeholder="Zoek op naam, kavel of type…" aria-label="Zoek in stadsregister">
+    </div>
+
+    <div id="register-content" class="register-content"></div>
+  </aside>
+
+  <!-- Right Slide-Over Inspectiepaneel -->
+  <aside id="inspector-drawer" class="panel inspector-drawer is-closed" aria-label="Inspectiepaneel" aria-hidden="true">
+    <!-- Active Chat Inspection View -->
+    <div id="inspector-chat-view" class="inspector-view">
+      <div class="panel-header inspector-header">
+        <div class="inspector-identity">
+          <div id="insp-chat-icon" class="type-emblem" aria-hidden="true"></div>
+          <div class="inspector-title-wrap">
+            <h2 id="insp-chat-name" class="panel-title inspector-name">Selecteer een kavel</h2>
+            <div class="inspector-badges">
+              <span id="insp-chat-source" class="source-pill">Simulatie</span>
+              <span id="insp-chat-role" class="role-label">Architect</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-icon btn-inspector-close" aria-label="Sluit inspectiepaneel (Escape)">
+          <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m4.5 4.5 9 9M13.5 4.5l-9 9"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="inspector-body">
+        <!-- Status & Complete CTA -->
+        <section class="inspector-section" aria-label="Statusbeheer">
+          <div class="status-banner">
+            <div class="status-banner-main">
+              <span id="insp-status-dot" class="status-dot" data-status="working"></span>
+              <span id="insp-status-text" class="status-banner-label">Aan het werk</span>
+            </div>
+            <span id="insp-mode-pill" class="mode-pill">Automatisch</span>
+          </div>
+
+          <button type="button" id="btn-complete-build" class="btn-emerald btn-full complete-cta">
+            <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="9" cy="9" r="6.2"></circle>
+              <path d="M6.4 9.2 8.2 11l3.6-3.8"></path>
+            </svg>
+            <span>Bouw voltooien &amp; blijvend opslaan</span>
+          </button>
+
+          <div class="status-controls" role="group" aria-label="Wijzig status handmatig">
+            <button type="button" class="status-btn" data-set-status="working">Aan het werk</button>
+            <button type="button" class="status-btn" data-set-status="waiting">Wacht op mij</button>
+            <button type="button" class="status-btn" data-set-status="done">Klaar</button>
+            <button type="button" class="status-btn" data-set-status="sleeping">Slaapt</button>
+            <button type="button" class="status-btn status-btn-auto" data-set-status="auto" title="Bepaal status weer automatisch">Auto</button>
+          </div>
+        </section>
+
+        <!-- Planned Building Strip -->
+        <section class="inspector-section" aria-label="Gepland bouwwerk">
+          <div class="planned-head">
+            <h3 class="section-heading">Gepland bouwwerk</h3>
+            <span id="insp-planned-label" class="planned-value">Huis</span>
+          </div>
+          <div class="type-controls" role="group" aria-label="Wijzig type bouwwerk">
+            <button type="button" class="type-btn" data-set-type="huis">Huis</button>
+            <button type="button" class="type-btn" data-set-type="flat">Flat</button>
+            <button type="button" class="type-btn" data-set-type="wolkenkrabber">Toren</button>
+            <button type="button" class="type-btn" data-set-type="mall">Mall</button>
+            <button type="button" class="type-btn" data-set-type="infrastructuur">Infra</button>
+          </div>
+        </section>
+
+        <!-- Activity & Metadata -->
+        <section class="inspector-section" aria-label="Activiteit en gegevens">
+          <h3 class="section-heading">Activiteit</h3>
+          <dl class="meta-list">
+            <div class="meta-row">
+              <dt>Laatst actief</dt>
+              <dd id="insp-updated" class="tabular">Onbekend</dd>
+            </div>
+            <div class="meta-row">
+              <dt>Berichten</dt>
+              <dd id="insp-messages" class="tabular">0</dd>
+            </div>
+            <div id="insp-lot-row" class="meta-row">
+              <dt>Kavel</dt>
+              <dd id="insp-lot" class="mono-val tabular">(0, 0)</dd>
+            </div>
+            <div id="insp-tool-row" class="meta-row is-hidden">
+              <dt>Gereedschap</dt>
+              <dd><span id="insp-tool" class="tool-badge"></span></dd>
+            </div>
+            <div id="insp-workspace-row" class="meta-row is-hidden">
+              <dt>Werkruimte</dt>
+              <dd><span id="insp-workspace" class="mono-path"></span></dd>
+            </div>
+          </dl>
+          <p id="insp-summary" class="inspector-summary is-hidden"></p>
+        </section>
+
+        <!-- Latest Messages -->
+        <section class="inspector-section" aria-label="Recente berichten">
+          <h3 class="section-heading">Gesprekslog</h3>
+          <div class="message-block">
+            <h4 class="message-label">Laatste opdracht</h4>
+            <p id="insp-user-msg" class="message-text">Geen opdracht vastgelegd.</p>
+          </div>
+          <div class="message-block">
+            <h4 class="message-label">Laatste antwoord</h4>
+            <p id="insp-assistant-msg" class="message-text">Geen antwoord vastgelegd.</p>
+          </div>
+        </section>
+      </div>
+
+      <div class="inspector-footer">
+        <button type="button" id="btn-focus-chat" class="btn-primary">
+          <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="9" cy="9" r="5.5"></circle>
+            <path d="M9 1.8v2.4M9 13.8v2.4M1.8 9h2.4M13.8 9h2.4"></path>
+          </svg>
+          <span>Focus kavel</span>
+        </button>
+        <button type="button" id="btn-delete-chat" class="btn-danger-subtle is-hidden">Verwijder bouwer</button>
+      </div>
+    </div>
+
+    <!-- Permanent Completed Building Inspection View -->
+    <div id="inspector-building-view" class="inspector-view is-hidden">
+      <div class="panel-header inspector-header">
+        <div class="inspector-identity">
+          <div id="insp-bldg-icon" class="type-emblem type-emblem-built" aria-hidden="true"></div>
+          <div class="inspector-title-wrap">
+            <h2 id="insp-bldg-name" class="panel-title inspector-name">Bouwwerk</h2>
+            <div class="inspector-badges">
+              <span id="insp-bldg-code" class="code-pill tabular">#001</span>
+              <span id="insp-bldg-type" class="source-pill">Huis</span>
+              <span id="insp-bldg-source" class="role-label">Simulatie</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-icon btn-inspector-close" aria-label="Sluit inspectiepaneel (Escape)">
+          <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m4.5 4.5 9 9M13.5 4.5l-9 9"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="inspector-body">
+        <section class="inspector-section" aria-label="Status oplevering">
+          <div class="status-banner">
+            <div class="status-banner-main">
+              <span class="status-dot" data-status="done"></span>
+              <span class="status-banner-label">Blijvend opgeleverd</span>
+            </div>
+            <span class="mode-pill is-built">Stadsbezit</span>
+          </div>
+          <p class="section-copy built-note">Dit bouwwerk blijft permanent in Shin-AI Tokyo staan en draagt bij aan de groei van de stad.</p>
+        </section>
+
+        <section class="inspector-section" aria-label="Architectuurgegevens">
+          <h3 class="section-heading">Bouwgegevens</h3>
+          <dl class="meta-list">
+            <div class="meta-row">
+              <dt>Architectuur</dt>
+              <dd id="insp-bldg-subtype">Onbekend</dd>
+            </div>
+            <div id="insp-bldg-floors-row" class="meta-row">
+              <dt>Hoogte</dt>
+              <dd id="insp-bldg-floors" class="tabular">1 verdieping</dd>
+            </div>
+            <div class="meta-row">
+              <dt>Opgeleverd</dt>
+              <dd id="insp-bldg-date" class="tabular">Onbekend</dd>
+            </div>
+            <div class="meta-row">
+              <dt>Kavel</dt>
+              <dd id="insp-bldg-coords" class="mono-val tabular">(0, 0)</dd>
+            </div>
+            <div id="insp-bldg-path-row" class="meta-row is-hidden">
+              <dt>Werkruimte</dt>
+              <dd><span id="insp-bldg-path" class="mono-path"></span></dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="inspector-section" aria-label="Samenvatting bouwtaak">
+          <h3 class="section-heading">Uitgevoerde opdracht</h3>
+          <p id="insp-bldg-summary" class="message-text">Opgeleverd vanuit een AI-sessie.</p>
+        </section>
+      </div>
+
+      <div class="inspector-footer">
+        <button type="button" id="btn-focus-building" class="btn-primary">
+          <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="9" cy="9" r="5.5"></circle>
+            <path d="M9 1.8v2.4M9 13.8v2.4M1.8 9h2.4M13.8 9h2.4"></path>
+          </svg>
+          <span>Focus gebouw</span>
+        </button>
+        <button type="button" id="btn-delete-building" class="btn-danger-subtle" data-confirm="false">Verwijder uit stad</button>
+      </div>
+    </div>
+
+    <!-- AI Hoofdkantoor (HQ) Inspection View -->
+    <div id="inspector-hq-view" class="inspector-view is-hidden">
+      <div class="panel-header inspector-header">
+        <div class="inspector-identity">
+          <div class="type-emblem type-emblem-hq" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 20.5h16"></path>
+              <path d="M7 20.5V8.5l5-3.5 5 3.5v12"></path>
+              <path d="M12 5V2.5"></path>
+              <path d="M10 11.5h4M10 15h4M12 20.5V18"></path>
+            </svg>
+          </div>
+          <div class="inspector-title-wrap">
+            <h2 id="insp-hq-name" class="panel-title inspector-name">Shin-AI Hoofdkantoor</h2>
+            <div class="inspector-badges">
+              <span class="code-pill">AI HQ</span>
+              <span id="insp-hq-level" class="source-pill tabular">Niv. 1 · Kustdorp</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-icon btn-inspector-close" aria-label="Sluit inspectiepaneel (Escape)">
+          <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m4.5 4.5 9 9M13.5 4.5l-9 9"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="inspector-body">
+        <section class="inspector-section" aria-label="Live bezetting hoofdkantoor">
+          <h3 class="section-heading">Live bezetting</h3>
+          <div class="hq-stats-grid">
+            <div class="hq-stat-cell">
+              <span class="hq-stat-top"><span class="status-dot" data-status="working"></span>Aan het werk</span>
+              <span id="insp-hq-working" class="hq-stat-val tabular">0</span>
+            </div>
+            <div class="hq-stat-cell">
+              <span class="hq-stat-top"><span class="status-dot" data-status="waiting"></span>Wacht op mij</span>
+              <span id="insp-hq-waiting" class="hq-stat-val tabular">0</span>
+            </div>
+            <div class="hq-stat-cell">
+              <span class="hq-stat-top"><span class="status-dot" data-status="done"></span>Klaar</span>
+              <span id="insp-hq-done" class="hq-stat-val tabular">0</span>
+            </div>
+            <div class="hq-stat-cell">
+              <span class="hq-stat-top"><span class="status-dot" data-status="sleeping"></span>Slaapt</span>
+              <span id="insp-hq-sleeping" class="hq-stat-val tabular">0</span>
+            </div>
+          </div>
+          <dl class="meta-list hq-meta-list">
+            <div class="meta-row">
+              <dt>Totaal gebouwd</dt>
+              <dd id="insp-hq-built" class="tabular">0 gebouwen</dd>
+            </div>
+            <div class="meta-row">
+              <dt>Inwoners</dt>
+              <dd id="insp-hq-pop" class="tabular">0</dd>
+            </div>
+            <div class="meta-row">
+              <dt>Kavel</dt>
+              <dd id="insp-hq-coords" class="mono-val tabular">(1, -1)</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="inspector-section" aria-label="Uitgezonden AI-bouwers">
+          <h3 class="section-heading">Uitgezonden AI-bouwers</h3>
+          <div id="insp-hq-agents" class="hq-agents-list" role="list"></div>
+        </section>
+      </div>
+
+      <div class="inspector-footer">
+        <button type="button" id="btn-focus-hq" class="btn-primary">
+          <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="9" cy="9" r="5.5"></circle>
+            <path d="M9 1.8v2.4M9 13.8v2.4M1.8 9h2.4M13.8 9h2.4"></path>
+          </svg>
+          <span>Focus Hoofdkantoor</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Selective Local Project Import Modal -->
+  <div id="projects-backdrop" class="modal-backdrop is-hidden" aria-hidden="true">
+    <section id="projects-modal" class="panel projects-modal" role="dialog" aria-labelledby="projects-title" aria-modal="true">
+      <div class="panel-header">
+        <h2 id="projects-title" class="panel-title">Bestaande projecten importeren</h2>
+        <button type="button" id="btn-projects-close" class="btn-icon" aria-label="Sluit projectselectie (Escape)">
+          <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m4.5 4.5 9 9M13.5 4.5l-9 9"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="projects-toolbar">
+        <p class="projects-helper">Vink alleen de projecten aan die je als blijvend gebouw in je stad wilt zetten.</p>
+        <div class="projects-search-wrap">
+          <svg class="search-icon projects-search-icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="8.2" cy="8.2" r="5.1"></circle>
+            <path d="m12.1 12.1 3.3 3.3"></path>
+          </svg>
+          <input id="projects-search" type="search" placeholder="Zoek op projectnaam of pad…" aria-label="Zoek lokaal project">
+        </div>
+      </div>
+
+      <div id="projects-list" class="projects-list" role="list"></div>
+
+      <div class="projects-footer">
+        <div class="projects-footer-left">
+          <span id="projects-selected-count" class="projects-count tabular">0 geselecteerd</span>
+          <button type="button" id="btn-projects-clear" class="btn-link" disabled>Deselecteer alles</button>
+        </div>
+        <button type="button" id="btn-projects-import" class="btn-emerald" disabled>Bouw geselecteerde (0)</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Floating Hover Tooltip -->
+  <div id="hover-tooltip" class="panel hover-tooltip is-hidden" role="tooltip" aria-hidden="true">
+    <div class="tooltip-head">
+      <span id="tooltip-name" class="tooltip-name"></span>
+      <span id="tooltip-status" class="tooltip-status">
+        <span id="tooltip-dot" class="status-dot"></span>
+        <span id="tooltip-status-label"></span>
+      </span>
+    </div>
+    <p id="tooltip-detail" class="tooltip-detail"></p>
+    <span id="tooltip-hint" class="tooltip-hint">Klik voor inspectie</span>
+  </div>
+
+  <!-- Empty State Subtle Callout -->
+  <div id="empty-hint" class="panel empty-hint is-hidden" role="status">
+    <p class="empty-hint-text">De kavels zijn leeg. Start een AI-taak of bouw direct een eerste gebouw.</p>
+    <button type="button" id="btn-empty-build" class="btn-emerald btn-compact">Bouw 1 gebouw af</button>
+  </div>
+
+  <!-- Bottom-Left Camera & Register Cluster -->
+  <div id="controls-cluster" class="controls-cluster" role="toolbar" aria-label="Kaart- en camerabediening">
+    <button type="button" id="btn-register" class="cluster-btn cluster-register" aria-expanded="false" aria-controls="register-drawer" title="Open stadsregister">
+      <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3.2 5h11.6M3.2 9h11.6M3.2 13h8.2"></path>
+      </svg>
+      <span>Lijst</span>
+      <span id="btn-register-count" class="cluster-count tabular">0</span>
+    </button>
+    <span class="cluster-sep" aria-hidden="true"></span>
+    <button type="button" id="btn-zoom-out" class="cluster-btn cluster-icon" aria-label="Uitzoomen" title="Uitzoomen (-)">
+      <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4.5 9h9"></path>
+      </svg>
+    </button>
+    <button type="button" id="btn-zoom-reset" class="cluster-btn cluster-icon" aria-label="Herstel zicht" title="Herstel zicht (R)">
+      <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="9" cy="9" r="5.5"></circle>
+        <circle cx="9" cy="9" r="1.4" fill="currentColor"></circle>
+      </svg>
+    </button>
+    <button type="button" id="btn-zoom-in" class="cluster-btn cluster-icon" aria-label="Inzoomen" title="Inzoomen (+)">
+      <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 4.5v9M4.5 9h9"></path>
+      </svg>
+    </button>
+    <span class="cluster-sep" aria-hidden="true"></span>
+    <button type="button" id="btn-orbit-left" class="cluster-btn cluster-icon" aria-label="Draai camera links" title="Draai links (Q)">
+      <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5.4 6.2A5.2 5.2 0 1 1 4.2 11"></path>
+        <path d="M3.5 4.2v2.9h2.9"></path>
+      </svg>
+    </button>
+    <button type="button" id="btn-orbit-right" class="cluster-btn cluster-icon" aria-label="Draai camera rechts" title="Draai rechts (E)">
+      <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12.6 6.2A5.2 5.2 0 1 0 13.8 11"></path>
+        <path d="M14.5 4.2v2.9h-2.9"></path>
+      </svg>
+    </button>
+    <span class="cluster-sep" aria-hidden="true"></span>
+    <button type="button" id="btn-tilt-toggle" class="cluster-btn cluster-tilt" aria-pressed="false" title="Wissel tussen 3D en Bovenaanzicht (V)">
+      <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 2.6 14.8 5.9v6.2L9 15.4 3.2 12.1V5.9L9 2.6Z"></path>
+        <path d="M3.2 5.9 9 9.1l5.8-3.2M9 9.1v6.3"></path>
+      </svg>
+      <span id="tilt-toggle-label">3D</span>
+    </button>
+    <span class="cluster-sep" aria-hidden="true"></span>
+    <button type="button" id="btn-focus-hq-bar" class="cluster-btn cluster-hq" title="Focus AI Hoofdkantoor (H)">
+      <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3.5 15h11M5.5 15V7l3.5-2.5L12.5 7v8M9 4.5V2.5"></path>
+      </svg>
+      <span>HQ</span>
+    </button>
+  </div>
+
+  <!-- Quiet Bottom-Center 3D Camera Hint -->
+  <div id="camera-hint" class="camera-hint" aria-hidden="true">
+    Sleep: bewegen · Rechts-sleep: 3D draaien · Scroll: zoomen
+  </div>
+
+  <!-- Bottom-Right Compact Status & Skyline Legend -->
+  <div id="status-legend" class="status-legend" aria-label="Status- en gebouwlegenda">
+    <span class="legend-item"><span class="status-dot" data-status="working"></span>Aan het werk</span>
+    <span class="legend-item"><span class="status-dot" data-status="waiting"></span>Wacht op mij</span>
+    <span class="legend-item"><span class="status-dot" data-status="done"></span>Klaar</span>
+    <span class="legend-item"><span class="status-dot" data-status="sleeping"></span>Slaapt</span>
+    <span class="legend-sep" aria-hidden="true"></span>
+    <span id="legend-buildings" class="legend-buildings tabular">0 Huizen · 0 Flats · 0 Infra</span>
+  </div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
