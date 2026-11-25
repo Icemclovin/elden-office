@@ -1,5 +1,6 @@
 import { createCityScene } from './scene.js';
 import { createAudio } from './audio.js';
+import { createHeader } from './header.js';
 
 const STATUS_META = {
   waiting: { label: 'Wacht op mij', order: 0 },
@@ -51,11 +52,11 @@ const SUBTYPE_LABELS = {
   canal_bridge: 'Kanaalbrug',
   solar_hub: 'Zonne-energieplein',
   torii_plaza: 'Stadsplein met poort',
-  townhouse: 'Rechtsegoing',
+  townhouse: 'Stadswoning',
   zen_garden_home: 'Zen-tuinhuis',
-  zen_penthouse: 'Zen-penthhouse flat',
+  zen_penthouse: 'Zen-penthouse flat',
   residence_tower: 'Residentie-toren',
-  solar_tower: 'Jade Zonnpoon',
+  solar_tower: 'Jade Zonnetoren',
   aoyama_tower: 'Aoyama Hot-Pink flat',
   department_store: 'Warenhuis',
   night_bazaar: 'Avondmarkt in mall',
@@ -110,9 +111,33 @@ const state = {
     }
   },
   counts: { total: 0, working: 0, waiting: 0, done: 0, sleeping: 0 },
+  hq: {
+    id: 'hq-central',
+    name: 'Shin-AI Hoofdkantoor',
+    gridX: 0,
+    gridY: 0,
+    foreman: {
+      id: 'foreman-uitvoerder',
+      name: 'Uitvoerder',
+      role: 'Uitvoerder',
+      status: 'available',
+      channelScope: 'user-only',
+      summary: 'Direct aanspreekpunt voor bezetting en bouwvoortgang.'
+    },
+    roster: []
+  },
+  hqFocused: false,
+  hqZone: 'overview',
+  highlightedHqZone: null,
+  selectedAgentInHq: false,
+  foremanMessages: [],
+  foremanLoaded: false,
+  foremanLoading: false,
+  foremanSending: false,
+  foremanError: '',
   demoActive: false,
   filter: 'all',
-  selection: null, // { kind: 'chat' | 'building', id: string } | null
+  selection: null, // { kind: 'chat' | 'building' | 'hq' | 'foreman', id: string } | null
   registerOpen: false,
   registerTab: 'active', // 'active' | 'city'
   registerQuery: '',
@@ -137,21 +162,6 @@ const state = {
 // DOM References
 const els = {
   canvas: document.getElementById('city-canvas'),
-  connStatus: document.getElementById('connection-status'),
-  connLabel: document.querySelector('#connection-status .conn-label'),
-  btnCityProgress: document.getElementById('btn-city-progress'),
-  cityProgressText: document.getElementById('city-progress-text'),
-  cityProgressFill: document.getElementById('city-progress-fill'),
-  filterButtons: Array.from(document.querySelectorAll('.filter-pill')),
-  waitingFilterBtn: document.querySelector('.filter-pill[data-filter="waiting"]'),
-  countNodes: {
-    total: document.querySelector('[data-count="total"]'),
-    working: document.querySelector('[data-count="working"]'),
-    waiting: document.querySelector('[data-count="waiting"]'),
-    done: document.querySelector('[data-count="done"]'),
-    sleeping: document.querySelector('[data-count="sleeping"]')
-  },
-  btnProjects: document.getElementById('btn-projects'),
   projectsBackdrop: document.getElementById('projects-backdrop'),
   projectsModal: document.getElementById('projects-modal'),
   btnProjectsClose: document.getElementById('btn-projects-close'),
@@ -160,7 +170,6 @@ const els = {
   projectsSelectedCount: document.getElementById('projects-selected-count'),
   btnProjectsClear: document.getElementById('btn-projects-clear'),
   btnProjectsImport: document.getElementById('btn-projects-import'),
-  btnBuildOrder: document.getElementById('btn-build-order'),
   buildPopover: document.getElementById('build-popover'),
   btnBuildClose: document.getElementById('btn-build-close'),
   buildForm: document.getElementById('build-form'),
@@ -174,9 +183,6 @@ const els = {
   btnDemoCycle: document.getElementById('btn-demo-cycle'),
   btnDemoClear: document.getElementById('btn-demo-clear'),
   btnCityReset: document.getElementById('btn-city-reset'),
-  btnAudio: document.getElementById('btn-audio'),
-  iconAudioOff: document.getElementById('icon-audio-off'),
-  iconAudioOn: document.getElementById('icon-audio-on'),
   toastContainer: document.getElementById('toast-container'),
   registerDrawer: document.getElementById('register-drawer'),
   btnRegister: document.getElementById('btn-register'),
@@ -192,18 +198,37 @@ const els = {
   inspectorChatView: document.getElementById('inspector-chat-view'),
   inspectorBuildingView: document.getElementById('inspector-building-view'),
   inspectorHqView: document.getElementById('inspector-hq-view'),
+  inspectorForemanView: document.getElementById('inspector-foreman-view'),
   inspHqName: document.getElementById('insp-hq-name'),
   inspHqLevel: document.getElementById('insp-hq-level'),
-  inspHqWorking: document.getElementById('insp-hq-working'),
+  inspHqInsideStat: document.getElementById('insp-hq-inside-stat'),
+  inspHqOnsiteStat: document.getElementById('insp-hq-onsite-stat'),
   inspHqWaiting: document.getElementById('insp-hq-waiting'),
-  inspHqDone: document.getElementById('insp-hq-done'),
-  inspHqSleeping: document.getElementById('insp-hq-sleeping'),
   inspHqBuilt: document.getElementById('insp-hq-built'),
-  inspHqPop: document.getElementById('insp-hq-pop'),
-  inspHqCoords: document.getElementById('insp-hq-coords'),
-  inspHqAgents: document.getElementById('insp-hq-agents'),
-  btnFocusHq: document.getElementById('btn-focus-hq'),
+  inspHqForemanName: document.getElementById('insp-hq-foreman-name'),
+  inspHqForemanSummary: document.getElementById('insp-hq-foreman-summary'),
+  btnHqForemanInline: document.getElementById('btn-hq-foreman-inline'),
+  inspHqInsideSection: document.getElementById('insp-hq-inside-section'),
+  inspHqInsideCount: document.getElementById('insp-hq-inside-count'),
+  inspHqInsideList: document.getElementById('insp-hq-inside-list'),
+  inspHqOnsiteSection: document.getElementById('insp-hq-onsite-section'),
+  inspHqOnsiteCount: document.getElementById('insp-hq-onsite-count'),
+  inspHqOnsiteList: document.getElementById('insp-hq-onsite-list'),
+  btnHqZoomToggle: document.getElementById('btn-hq-zoom-toggle'),
+  btnHqZoomLabel: document.getElementById('btn-hq-zoom-label'),
+  btnHqOpenForeman: document.getElementById('btn-hq-open-foreman'),
   btnFocusHqBar: document.getElementById('btn-focus-hq-bar'),
+  hqInteriorBar: document.getElementById('hq-interior-bar'),
+  hqZoneBtns: Array.from(document.querySelectorAll('.hq-zone-btn')),
+  btnHqExitBar: document.getElementById('btn-hq-exit-bar'),
+  controlsCluster: document.getElementById('controls-cluster'),
+  cameraHint: document.getElementById('camera-hint'),
+  foremanTitle: document.getElementById('foreman-title'),
+  foremanChips: Array.from(document.querySelectorAll('.foreman-chip')),
+  foremanMessages: document.getElementById('foreman-messages'),
+  foremanForm: document.getElementById('foreman-form'),
+  foremanInput: document.getElementById('foreman-input'),
+  btnForemanSend: document.getElementById('btn-foreman-send'),
   inspectorCloseBtns: Array.from(document.querySelectorAll('.btn-inspector-close')),
   inspChatIcon: document.getElementById('insp-chat-icon'),
   inspChatName: document.getElementById('insp-chat-name'),
@@ -228,6 +253,8 @@ const els = {
   inspUserMsg: document.getElementById('insp-user-msg'),
   inspAssistantMsg: document.getElementById('insp-assistant-msg'),
   btnFocusChat: document.getElementById('btn-focus-chat'),
+  btnAskForemanAbout: document.getElementById('btn-ask-foreman-about'),
+  btnAskForemanLabel: document.getElementById('btn-ask-foreman-label'),
   btnDeleteChat: document.getElementById('btn-delete-chat'),
   inspBldgIcon: document.getElementById('insp-bldg-icon'),
   inspBldgName: document.getElementById('insp-bldg-name'),
@@ -265,19 +292,70 @@ const els = {
 
 const audio = createAudio();
 
+const header = createHeader({
+  milestones: MILESTONES,
+  onFilter: (nextFilter) => setFilter(nextFilter),
+  onCityProgress() {
+    if (state.registerOpen && state.registerTab === 'city') {
+      setRegisterOpen(false);
+    } else {
+      setRegisterOpen(true, 'city');
+    }
+  },
+  onHqClick: () => openHqPanel({ focus: true }),
+  onForemanClick: () => openForemanPanel({ focusInput: true }),
+  onProjectsToggle: () => setProjectsModalOpen(!state.projectsOpen),
+  onBuildOrderToggle: () => setBuildPopoverOpen(!state.buildOpen),
+  onAudioToggle: () => header.setAudioEnabled(audio.toggle())
+});
+
 const scene = createCityScene(els.canvas, {
+  onHQModeChange(isInside) {
+    syncHqInteriorMode(Boolean(isInside));
+  },
   onSelect(item) {
     if (!item) {
+      state.selectedAgentInHq = false;
       setSelection(null);
       return;
     }
-    setSelection({ kind: item.kind, id: item.id });
+    const kind = item.kind || item.type;
+    if (kind === 'hq_holo') {
+      setRegisterOpen(true, 'city');
+      return;
+    }
+    if (kind === 'hq_zone') {
+      focusHqZone(item.zone || 'overview', { openPanel: true });
+      return;
+    }
+    if (kind === 'foreman') {
+      openForemanPanel({ focusInput: false });
+      return;
+    }
+    if (kind === 'hq') {
+      openHqPanel({ focus: true, id: item.id });
+      return;
+    }
+    if (kind === 'agent') {
+      if (item.id && state.chats.some((c) => c.id === item.id)) {
+        state.selectedAgentInHq = Boolean(item.inHQ);
+        setSelection({ kind: 'chat', id: item.id });
+      } else {
+        openHqPanel({ focus: Boolean(item.inHQ) });
+      }
+      return;
+    }
+    if (kind && item.id) {
+      state.selectedAgentInHq = false;
+      setSelection({ kind, id: item.id });
+    }
   },
   onHover(item, pos) {
+    const itemKind = item ? (item.kind || item.type) : null;
     if (
       state.buildOpen ||
       state.projectsOpen ||
-      (item && state.selection && item.kind === state.selection.kind && item.id === state.selection.id)
+      (item && state.selection && itemKind === state.selection.kind && item.id === state.selection.id)
     ) {
       renderTooltip(null, null);
       return;
@@ -418,6 +496,62 @@ function deriveCityFallback(buildings) {
   };
 }
 
+function deriveHqFallback(city, chats) {
+  const base = city?.hq || {};
+  const roster = chats.map((c) => {
+    const inHq = c.status === 'sleeping' || c.status === 'done';
+    return {
+      id: c.id,
+      name: c.name || 'AI-bouwer',
+      role: c.role || 'architect',
+      specialty: c.specialty || null,
+      specialtyLabel: c.specialtyLabel || null,
+      color: c.color || null,
+      status: c.status || 'sleeping',
+      location: inHq ? 'hq' : 'site',
+      locationLabel: inHq
+        ? (c.status === 'sleeping' ? 'Slaapcabines' : 'HQ Lounge')
+        : (Number.isFinite(c.gridX) && Number.isFinite(c.gridY) ? `Kavel (${c.gridX}, ${c.gridY})` : 'Bouwplaats'),
+      zone: inHq ? (c.status === 'sleeping' ? 'sleep_pods' : 'lounge') : 'site',
+      buildingId: c.builtBuildingId || null,
+      gridX: c.gridX,
+      gridY: c.gridY,
+      task: c.currentTool || c.summary || formatPlannedBuilding(c)
+    };
+  });
+  return {
+    id: base.id || 'hq-central',
+    name: base.name || 'Shin-AI Hoofdkantoor',
+    gridX: base.gridX ?? 0,
+    gridY: base.gridY ?? 0,
+    foreman: {
+      id: 'foreman-uitvoerder',
+      name: 'Uitvoerder',
+      role: 'Uitvoerder',
+      status: 'available',
+      channelScope: 'user-only',
+      summary: 'Direct aanspreekpunt voor bezetting en bouwvoortgang.'
+    },
+    roster
+  };
+}
+
+function normalizeHqPayload(rawHq, city, chats) {
+  const fallback = deriveHqFallback(city, chats);
+  if (!rawHq || typeof rawHq !== 'object') return fallback;
+  return {
+    id: rawHq.id || fallback.id,
+    name: rawHq.name || fallback.name,
+    gridX: Number.isFinite(rawHq.gridX) ? rawHq.gridX : fallback.gridX,
+    gridY: Number.isFinite(rawHq.gridY) ? rawHq.gridY : fallback.gridY,
+    foreman: {
+      ...fallback.foreman,
+      ...(rawHq.foreman && typeof rawHq.foreman === 'object' ? rawHq.foreman : {})
+    },
+    roster: Array.isArray(rawHq.roster) ? rawHq.roster : fallback.roster
+  };
+}
+
 // ============================================================================
 // State Application & Diffing
 // ============================================================================
@@ -428,6 +562,7 @@ function applyPayload(payload) {
   const buildings = Array.isArray(payload.buildings) ? payload.buildings : [];
   const city = payload.city || deriveCityFallback(buildings);
   const counts = payload.counts || computeCounts(chats);
+  const hq = normalizeHqPayload(payload.hq, city, chats);
 
   if (state.hasInitialState) {
     // 1. Detect newly completed permanent buildings
@@ -472,10 +607,11 @@ function applyPayload(payload) {
   state.buildings = buildings;
   state.city = city;
   state.counts = counts;
+  state.hq = hq;
   state.demoActive = Boolean(payload.demoActive || chats.some((c) => c.isDemo));
 
-  // If selected item was removed, close inspector cleanly (HQ is permanent)
-  if (state.selection && state.selection.kind !== 'hq') {
+  // If selected item was removed, close inspector cleanly (HQ & Foreman are permanent)
+  if (state.selection && state.selection.kind !== 'hq' && state.selection.kind !== 'foreman') {
     const exists = state.selection.kind === 'building'
       ? buildings.some((b) => b.id === state.selection.id)
       : chats.some((c) => c.id === state.selection.id);
@@ -486,7 +622,8 @@ function applyPayload(payload) {
     }
   }
 
-  scene.setState?.({ chats, buildings, city });
+  scene.setState?.({ chats, buildings, city, hq });
+  scene.setHQ?.(hq);
   renderTopbarAndLegend();
   renderDemoControls();
   renderRegister();
@@ -500,8 +637,7 @@ function applyPayload(payload) {
 // ============================================================================
 
 function setConnectionState(connState, text) {
-  els.connStatus.dataset.state = connState;
-  els.connLabel.textContent = text;
+  header.setConnectionState(connState, text);
 }
 
 function renderTopbarAndLegend() {
@@ -527,23 +663,8 @@ function renderTopbarAndLegend() {
   if (sig === state.lastTopbarSig) return;
   state.lastTopbarSig = sig;
 
-  for (const key of Object.keys(els.countNodes)) {
-    const node = els.countNodes[key];
-    if (node) node.textContent = String(counts[key] ?? 0);
-  }
-  els.waitingFilterBtn?.classList.toggle('has-urgent', (counts.waiting ?? 0) > 0);
-
-  const bldgWord = totalBldg === 1 ? 'gebouw' : 'gebouwen';
-  els.cityProgressText.textContent = `Niv. ${city.level} · ${city.name} · ${totalBldg} ${bldgWord}`;
-
-  // Progress within current level toward nextMilestone
-  let pct = 100;
-  if (city.nextMilestone && city.nextMilestone > 0) {
-    const curMilestone = MILESTONES.find((m) => m.level === city.level) || MILESTONES[0];
-    const span = Math.max(1, city.nextMilestone - curMilestone.min);
-    pct = Math.max(6, Math.min(100, Math.round(((totalBldg - curMilestone.min) / span) * 100)));
-  }
-  els.cityProgressFill.style.width = `${pct}%`;
+  header.setCounts(counts);
+  header.setCityProgress(city, totalBldg);
 
   els.btnRegisterCount.textContent = String((counts.total ?? 0) + totalBldg);
   els.tabActiveCount.textContent = String(counts.total ?? 0);
@@ -578,24 +699,31 @@ function renderDemoControls() {
 function setFilter(nextFilter) {
   state.filter = nextFilter;
   scene.setFilter?.(nextFilter);
-  for (const btn of els.filterButtons) {
-    const active = btn.dataset.filter === nextFilter;
-    btn.classList.toggle('is-active', active);
-    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-  }
+  header.setActiveFilter(nextFilter);
   renderRegister();
 }
 
 function setSelection(nextSelection, { focus = false } = {}) {
   renderTooltip(null, null);
   state.selection = nextSelection ? { kind: nextSelection.kind, id: nextSelection.id } : null;
-  scene.setSelected?.(state.selection);
+  if (state.selection?.kind === 'chat' || state.selection?.kind === 'building' || state.selection?.kind === 'hq') {
+    scene.setSelected?.(state.selection);
+  } else {
+    scene.setSelected?.(null);
+  }
+
+  header.setHqActive(state.selection?.kind === 'hq');
+  header.setForemanActive(state.selection?.kind === 'foreman');
 
   if (state.selection) {
     renderInspector(true);
     openInspectorDrawer();
     if (focus) {
-      scene.focusItem?.(state.selection.kind, state.selection.id);
+      if (state.selection.kind === 'hq') {
+        enterHqInterior();
+      } else if (state.selection.kind !== 'foreman') {
+        scene.focusItem?.(state.selection.kind, state.selection.id);
+      }
     }
   } else {
     closeInspectorDrawer();
@@ -607,6 +735,7 @@ function openInspectorDrawer() {
   els.inspectorDrawer.classList.remove('is-closed');
   els.inspectorDrawer.setAttribute('aria-hidden', 'false');
   els.statusLegend?.classList.add('is-obscured');
+  els.hqInteriorBar?.classList.add('is-inspector-open');
 }
 
 function closeInspectorDrawer() {
@@ -615,12 +744,158 @@ function closeInspectorDrawer() {
   els.inspectorDrawer.classList.add('is-closed');
   els.inspectorDrawer.setAttribute('aria-hidden', 'true');
   els.statusLegend?.classList.remove('is-obscured');
+  els.hqInteriorBar?.classList.remove('is-inspector-open');
+  header.setHqActive(false);
+  header.setForemanActive(false);
+}
+
+function isHqInteriorActive() {
+  if (typeof scene.isHQFocused === 'function') {
+    return Boolean(scene.isHQFocused());
+  }
+  return state.hqFocused;
+}
+
+function syncHqZoomButton() {
+  const focused = isHqInteriorActive();
+  state.hqFocused = focused;
+  if (els.btnHqZoomLabel) {
+    els.btnHqZoomLabel.textContent = focused ? 'Uit HQ-weergave' : 'Zoom in op HQ';
+  }
+  els.btnHqZoomToggle?.classList.toggle('is-active', focused);
+}
+
+function syncHqInteriorMode(isInside) {
+  state.hqFocused = Boolean(isInside);
+  if (!state.hqFocused) {
+    state.hqZone = 'overview';
+    state.highlightedHqZone = null;
+  }
+  els.hqInteriorBar?.classList.toggle('is-hidden', !state.hqFocused);
+  els.hqInteriorBar?.setAttribute('aria-hidden', state.hqFocused ? 'false' : 'true');
+  els.controlsCluster?.classList.toggle('is-hq-mode', state.hqFocused);
+  els.cameraHint?.classList.toggle('is-hidden', state.hqFocused);
+  syncHqZoneButtons();
+  syncHqZoomButton();
+}
+
+function syncHqZoneButtons() {
+  for (const btn of els.hqZoneBtns) {
+    const active = btn.dataset.hqZone === state.hqZone;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+}
+
+const SPECIALTY_MAP = {
+  backend_engineer: { label: 'Backend Engineer', color: '#818cf8' },
+  frontend_engineer: { label: 'Frontend Engineer', color: '#38bdf8' },
+  tester: { label: 'Tester', color: '#34d399' },
+  devops: { label: 'DevOps Engineer', color: '#2dd4bf' },
+  cybersecurity: { label: 'Cybersecurity', color: '#f87171' },
+  ui_designer: { label: 'UI Designer', color: '#f472b6' },
+  team_lead: { label: 'Teamleider', color: '#fbbf24' },
+  project_manager: { label: 'Projectmanager', color: '#a78bfa' }
+};
+const SPECIALTY_KEYS = Object.keys(SPECIALTY_MAP);
+
+function resolveFallbackSpecialty(entry) {
+  if (entry?.specialty && SPECIALTY_MAP[entry.specialty]) {
+    return SPECIALTY_MAP[entry.specialty];
+  }
+  const key = String(entry?.specialty || entry?.role || entry?.id || 'agent');
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
+  }
+  return SPECIALTY_MAP[SPECIALTY_KEYS[Math.abs(hash) % SPECIALTY_KEYS.length]];
+}
+
+function getSpecialtyColor(entry) {
+  if (entry?.color && typeof entry.color === 'string') return entry.color;
+  return resolveFallbackSpecialty(entry).color;
+}
+
+function getSpecialtyLabel(entry) {
+  if (entry?.specialtyLabel && typeof entry.specialtyLabel === 'string') return entry.specialtyLabel;
+  if (entry?.specialty && SPECIALTY_MAP[entry.specialty]) return SPECIALTY_MAP[entry.specialty].label;
+  return resolveFallbackSpecialty(entry).label || getRoleLabel(entry?.role);
+}
+
+function focusHqZone(zone = 'overview', { openPanel = false } = {}) {
+  const validZone = ['overview', 'command', 'war_room', 'lab', 'sleep_pods', 'lounge'].includes(zone) ? zone : 'overview';
+  state.hqZone = validZone;
+  state.highlightedHqZone = ['sleep_pods', 'lounge', 'war_room', 'lab'].includes(validZone) ? validZone : null;
+
+  if (!state.hqFocused) {
+    enterHqInterior();
+  }
+  if (typeof scene.focusHQZone === 'function') {
+    scene.focusHQZone(validZone);
+  }
+  syncHqZoneButtons();
+
+  if (openPanel) {
+    openHqPanel({ focus: false });
+    renderHqInspector(true);
+    if (state.highlightedHqZone && els.inspHqInsideSection) {
+      els.inspHqInsideSection.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    }
+  } else if (state.selection?.kind === 'hq') {
+    renderHqInspector(true);
+  }
+}
+
+function enterHqInterior() {
+  if (typeof scene.focusHQ === 'function') {
+    scene.focusHQ();
+  } else {
+    const hqId = state.hq?.id || state.city?.hq?.id || 'hq-central';
+    scene.focusItem?.('hq', hqId);
+  }
+  syncHqInteriorMode(true);
+}
+
+function exitHqInterior() {
+  if (typeof scene.exitHQInterior === 'function') {
+    scene.exitHQInterior();
+  } else {
+    scene.resetView?.();
+  }
+  syncHqInteriorMode(false);
+}
+
+function toggleHqInteriorZoom() {
+  if (isHqInteriorActive()) {
+    exitHqInterior();
+  } else {
+    enterHqInterior();
+  }
+}
+
+function openHqPanel({ focus = true, id = null } = {}) {
+  const hqId = id || state.hq?.id || state.city?.hq?.id || 'hq-central';
+  setSelection({ kind: 'hq', id: hqId }, { focus });
+  syncHqZoomButton();
+}
+
+function openForemanPanel({ focusInput = false } = {}) {
+  const foremanId = state.hq?.foreman?.id || 'foreman-uitvoerder';
+  setSelection({ kind: 'foreman', id: foremanId }, { focus: false });
+  if (!state.foremanLoaded && !state.foremanLoading) {
+    loadForemanMessages();
+  }
+  if (focusInput) {
+    window.requestAnimationFrame(() => els.foremanInput?.focus());
+  }
 }
 
 function renderInspector(force = false) {
   if (!state.selection) return;
   if (state.selection.kind === 'hq') {
     renderHqInspector(force);
+  } else if (state.selection.kind === 'foreman') {
+    renderForemanInspector(force);
   } else if (state.selection.kind === 'building') {
     renderBuildingInspector(force);
   } else {
@@ -628,29 +903,120 @@ function renderInspector(force = false) {
   }
 }
 
+function getZoneLabel(entry) {
+  if (entry.locationLabel) return entry.locationLabel;
+  if (entry.zone === 'sleep_pods') return 'Slaapcapsules';
+  if (entry.zone === 'lounge') return 'HQ Lounge';
+  if (entry.zone === 'war_room') return 'War Room';
+  if (entry.zone === 'lab') return 'Testlab';
+  if (entry.zone === 'command') return 'Commandodesk';
+  if (Number.isFinite(entry.gridX) && Number.isFinite(entry.gridY)) {
+    return `Kavel (${entry.gridX}, ${entry.gridY})`;
+  }
+  return entry.location === 'hq' ? 'Hoofdkantoor' : 'Bouwplaats';
+}
+
+function focusRosterEntry(entry) {
+  if (!entry) return;
+  if (entry.location === 'hq') {
+    enterHqInterior();
+    return;
+  }
+  if (entry.id && state.chats.some((c) => c.id === entry.id)) {
+    setSelection({ kind: 'chat', id: entry.id }, { focus: true });
+    return;
+  }
+  if (entry.buildingId && state.buildings.some((b) => b.id === entry.buildingId)) {
+    setSelection({ kind: 'building', id: entry.buildingId }, { focus: true });
+    return;
+  }
+  if (entry.id) {
+    scene.focusItem?.('chat', entry.id);
+  }
+}
+
+function buildHqRosterRow(entry) {
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'hq-roster-row';
+  if (state.highlightedHqZone && entry.zone === state.highlightedHqZone) {
+    row.classList.add('is-zone-highlight');
+  }
+  row.setAttribute('role', 'listitem');
+
+  const top = document.createElement('div');
+  top.className = 'hq-roster-top';
+
+  const who = document.createElement('span');
+  who.className = 'hq-roster-who';
+
+  const dot = document.createElement('span');
+  dot.className = 'status-dot';
+  dot.dataset.status = entry.status || (entry.location === 'hq' ? 'sleeping' : 'working');
+
+  const name = document.createElement('span');
+  name.className = 'hq-roster-name';
+  name.textContent = entry.name || 'AI-bouwer';
+
+  const specColor = getSpecialtyColor(entry);
+  const role = document.createElement('span');
+  role.className = 'specialty-pill';
+  role.style.setProperty('--spec-color', specColor);
+
+  const specDot = document.createElement('span');
+  specDot.className = 'specialty-dot';
+
+  const specText = document.createElement('span');
+  specText.textContent = getSpecialtyLabel(entry);
+  role.append(specDot, specText);
+
+  who.append(dot, name, role);
+
+  const where = document.createElement('span');
+  where.className = 'hq-roster-where';
+  where.textContent = getZoneLabel(entry);
+
+  top.append(who, where);
+
+  const what = document.createElement('div');
+  what.className = 'hq-roster-what';
+
+  const statusSpan = document.createElement('span');
+  statusSpan.className = 'hq-roster-status';
+  statusSpan.textContent = getStatusInfo(entry.status).label;
+
+  const taskSpan = document.createElement('span');
+  taskSpan.className = 'hq-roster-task';
+  taskSpan.textContent = entry.task || (entry.location === 'hq' ? 'Beschikbaar in hoofdkantoor' : 'Actief op bouwplaats');
+
+  what.append(statusSpan, taskSpan);
+  row.append(top, what);
+
+  row.addEventListener('click', () => focusRosterEntry(entry));
+  return row;
+}
+
 function renderHqInspector(force) {
-  const { city, counts, chats } = state;
-  const hq = city.hq || { id: 'hq-shin-ai', name: 'Shin-AI Hoofdkantoor', gridX: 1, gridY: -1 };
-  const activeBuilders = chats
-    .slice()
-    .sort((a, b) => {
-      const orderDiff = getStatusInfo(a.status).order - getStatusInfo(b.status).order;
-      if (orderDiff !== 0) return orderDiff;
-      return (b.updatedAt || 0) - (a.updatedAt || 0);
-    });
+  const { city, counts, hq } = state;
+  const roster = Array.isArray(hq?.roster) ? hq.roster : [];
+  const inside = roster.filter((r) => r.location === 'hq' || r.zone === 'sleep_pods' || r.zone === 'lounge');
+  const onsite = roster.filter((r) => !(r.location === 'hq' || r.zone === 'sleep_pods' || r.zone === 'lounge'));
+  const totalB = city.totalBuildings ?? state.buildings.length;
+  const foreman = hq?.foreman || {};
+  const focused = isHqInteriorActive();
 
   const sig = [
     'hq',
-    hq.name,
+    hq?.name || '',
     city.level,
     city.name,
-    city.totalBuildings,
-    city.population,
-    counts.working,
-    counts.waiting,
-    counts.done,
-    counts.sleeping,
-    activeBuilders.map((c) => `${c.id}:${c.status}:${c.name}:${c.buildingType}`).join(',')
+    totalB,
+    counts.waiting ?? 0,
+    focused ? '1' : '0',
+    state.highlightedHqZone || '',
+    foreman.name || '',
+    foreman.summary || '',
+    roster.map((r) => `${r.id}:${r.status}:${r.location}:${r.zone}:${r.locationLabel}:${r.specialtyLabel || ''}:${r.color || ''}:${r.task}`).join(',')
   ].join('\u001f');
 
   if (!force && sig === state.lastInspectorSig) return;
@@ -659,63 +1025,238 @@ function renderHqInspector(force) {
 
   els.inspectorChatView.classList.add('is-hidden');
   els.inspectorBuildingView.classList.add('is-hidden');
+  els.inspectorForemanView.classList.add('is-hidden');
   els.inspectorHqView.classList.remove('is-hidden');
 
-  els.inspHqName.textContent = hq.name || 'Shin-AI Hoofdkantoor';
+  els.inspHqName.textContent = hq?.name || 'Shin-AI Hoofdkantoor';
   els.inspHqLevel.textContent = `Niv. ${city.level} · ${city.name}`;
-  els.inspHqWorking.textContent = String(counts.working ?? 0);
+  els.inspHqInsideStat.textContent = String(inside.length);
+  els.inspHqOnsiteStat.textContent = String(onsite.length);
   els.inspHqWaiting.textContent = String(counts.waiting ?? 0);
-  els.inspHqDone.textContent = String(counts.done ?? 0);
-  els.inspHqSleeping.textContent = String(counts.sleeping ?? 0);
+  els.inspHqBuilt.textContent = String(totalB);
 
-  const totalB = city.totalBuildings ?? state.buildings.length;
-  els.inspHqBuilt.textContent = totalB === 1 ? '1 gebouw' : `${totalB} gebouwen`;
-  els.inspHqPop.textContent = String(city.population ?? 0);
-  els.inspHqCoords.textContent = `(${hq.gridX ?? 1}, ${hq.gridY ?? -1})`;
+  els.inspHqForemanName.textContent = foreman.name || 'Uitvoerder';
+  els.inspHqForemanSummary.textContent = foreman.summary || 'Direct aanspreekpunt voor bezetting en bouwvoortgang.';
 
-  const listEl = els.inspHqAgents;
-  listEl.textContent = '';
+  els.inspHqInsideCount.textContent = String(inside.length);
+  els.inspHqOnsiteCount.textContent = String(onsite.length);
+  els.inspHqInsideSection?.classList.toggle(
+    'is-zone-highlight',
+    state.highlightedHqZone === 'sleep_pods' || state.highlightedHqZone === 'lounge'
+  );
 
-  if (activeBuilders.length === 0) {
+  renderRosterSection(els.inspHqInsideList, inside, 'Geen AI-bouwers momenteel in het hoofdkantoor.');
+  renderRosterSection(els.inspHqOnsiteList, onsite, 'Geen AI-bouwers actief op bouwplaatsen.');
+  syncHqZoomButton();
+}
+
+function renderRosterSection(container, items, emptyText) {
+  if (!container) return;
+  container.textContent = '';
+  if (items.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'hq-empty';
-    empty.textContent = 'Geen actieve AI-bouwers uitgezonden.';
-    listEl.appendChild(empty);
+    empty.textContent = emptyText;
+    container.appendChild(empty);
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  for (const entry of items) {
+    frag.appendChild(buildHqRosterRow(entry));
+  }
+  container.appendChild(frag);
+}
+
+// ============================================================================
+// Uitvoerder Private Chat Panel
+// ============================================================================
+
+function formatForemanActionLabel(action) {
+  if (!action || !action.type) return '';
+  if (action.type === 'focus_hq') return 'Focus op Hoofdkantoor';
+  if (action.type === 'focus_agent') return 'Focus op AI-bouwer';
+  if (action.type === 'focus_building') return 'Focus op gebouw';
+  return 'Bekijk op kaart';
+}
+
+function executeForemanAction(action) {
+  if (!action || !action.type) return;
+  if (action.type === 'focus_hq') {
+    enterHqInterior();
+  } else if (action.type === 'focus_agent' && action.id) {
+    const rosterEntry = state.hq?.roster?.find((r) => r.id === action.id);
+    if (rosterEntry?.location === 'hq') {
+      enterHqInterior();
+    } else {
+      scene.focusItem?.('chat', action.id);
+    }
+  } else if (action.type === 'focus_building' && action.id) {
+    scene.focusItem?.('building', action.id);
+  }
+}
+
+async function loadForemanMessages() {
+  state.foremanLoading = true;
+  state.foremanError = '';
+  if (state.selection?.kind === 'foreman') renderForemanInspector(true);
+  try {
+    const data = await apiRequest('/api/foreman/messages', { method: 'GET' });
+    if (data?.foreman && state.hq) {
+      state.hq.foreman = { ...state.hq.foreman, ...data.foreman };
+    }
+    state.foremanMessages = Array.isArray(data?.messages) ? data.messages : [];
+    state.foremanLoaded = true;
+  } catch (err) {
+    state.foremanError = err.message || 'Kon berichten van Uitvoerder niet ophalen.';
+  } finally {
+    state.foremanLoading = false;
+    if (state.selection?.kind === 'foreman') renderForemanInspector(true);
+  }
+}
+
+async function sendForemanMessage(rawText) {
+  const text = typeof rawText === 'string' ? rawText.trim() : '';
+  if (!text || state.foremanSending) return;
+
+  state.foremanSending = true;
+  state.foremanError = '';
+  const optimisticMsg = {
+    id: `local-${Date.now()}`,
+    sender: 'user',
+    text,
+    createdAt: Date.now()
+  };
+  state.foremanMessages = [...state.foremanMessages, optimisticMsg];
+  if (els.foremanInput) els.foremanInput.value = '';
+  renderForemanInspector(true);
+
+  try {
+    const data = await apiRequest('/api/foreman/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message: text })
+    });
+    if (data?.foreman && state.hq) {
+      state.hq.foreman = { ...state.hq.foreman, ...data.foreman };
+    }
+    if (Array.isArray(data?.messages)) {
+      state.foremanMessages = data.messages;
+    } else if (data?.reply) {
+      const replyObj = typeof data.reply === 'string'
+        ? { id: `reply-${Date.now()}`, sender: 'foreman', text: data.reply, createdAt: Date.now(), action: data.action }
+        : data.reply;
+      state.foremanMessages = [...state.foremanMessages, replyObj];
+    }
+    state.foremanLoaded = true;
+    const action = data?.action || data?.reply?.action || null;
+    if (action) {
+      executeForemanAction(action);
+    }
+  } catch (err) {
+    state.foremanError = err.message || 'Bericht versturen mislukt.';
+  } finally {
+    state.foremanSending = false;
+    if (state.selection?.kind === 'foreman') {
+      renderForemanInspector(true);
+      els.foremanInput?.focus();
+    }
+  }
+}
+
+function renderForemanInspector(force) {
+  const foreman = state.hq?.foreman || {};
+  const sig = [
+    'foreman',
+    foreman.name || 'Uitvoerder',
+    state.foremanLoading ? '1' : '0',
+    state.foremanSending ? '1' : '0',
+    state.foremanError || '',
+    state.foremanMessages.map((m) => `${m.id}:${m.sender}:${m.text}:${m.action?.type || ''}`).join('|')
+  ].join('\u001f');
+
+  if (!force && sig === state.lastInspectorSig) return;
+  state.lastInspectorSig = sig;
+  resetDeleteBuildingConfirm();
+
+  els.inspectorChatView.classList.add('is-hidden');
+  els.inspectorBuildingView.classList.add('is-hidden');
+  els.inspectorHqView.classList.add('is-hidden');
+  els.inspectorForemanView.classList.remove('is-hidden');
+
+  if (els.foremanTitle) {
+    els.foremanTitle.textContent = foreman.name || 'Uitvoerder';
+  }
+  if (els.btnForemanSend) {
+    els.btnForemanSend.disabled = state.foremanSending;
+    els.btnForemanSend.textContent = state.foremanSending ? 'Bezig…' : 'Verstuur';
+  }
+  for (const chip of els.foremanChips) {
+    chip.disabled = state.foremanSending;
+  }
+
+  const container = els.foremanMessages;
+  if (!container) return;
+  container.textContent = '';
+
+  if (state.foremanLoading && state.foremanMessages.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'foreman-state-msg';
+    p.textContent = 'Privékanaal laden…';
+    container.appendChild(p);
     return;
   }
 
   const frag = document.createDocumentFragment();
-  for (const chat of activeBuilders) {
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'hq-agent-row';
-    row.setAttribute('role', 'listitem');
+  if (state.foremanMessages.length === 0) {
+    const intro = document.createElement('div');
+    intro.className = 'foreman-bubble is-foreman';
+    const body = document.createElement('p');
+    body.className = 'foreman-bubble-text';
+    body.textContent = 'Welkom in het privékanaal. Vraag mij wie waar werkt, wie er in het Hoofdkantoor rust, of laat mij direct inzoomen op een kavel.';
+    intro.appendChild(body);
+    frag.appendChild(intro);
+  } else {
+    for (const msg of state.foremanMessages) {
+      const isUser = msg.sender === 'user';
+      const bubble = document.createElement('div');
+      bubble.className = `foreman-bubble ${isUser ? 'is-user' : 'is-foreman'}`;
 
-    const left = document.createElement('span');
-    left.className = 'hq-agent-left';
+      const meta = document.createElement('div');
+      meta.className = 'foreman-bubble-meta';
+      const who = document.createElement('span');
+      who.textContent = isUser ? 'Jij' : (foreman.name || 'Uitvoerder');
+      const time = document.createElement('span');
+      time.className = 'tabular';
+      time.textContent = msg.createdAt ? formatRelativeDutch(msg.createdAt) : '';
+      meta.append(who, time);
 
-    const dot = document.createElement('span');
-    dot.className = 'status-dot';
-    dot.dataset.status = chat.status;
+      const textEl = document.createElement('p');
+      textEl.className = 'foreman-bubble-text';
+      textEl.textContent = msg.text || '';
 
-    const name = document.createElement('span');
-    name.className = 'hq-agent-name';
-    name.textContent = chat.name || 'AI-bouwer';
+      bubble.append(meta, textEl);
 
-    left.append(dot, name);
+      if (msg.action && msg.action.type) {
+        const actionBtn = document.createElement('button');
+        actionBtn.type = 'button';
+        actionBtn.className = 'foreman-action-chip';
+        actionBtn.textContent = formatForemanActionLabel(msg.action);
+        actionBtn.addEventListener('click', () => executeForemanAction(msg.action));
+        bubble.appendChild(actionBtn);
+      }
 
-    const tag = document.createElement('span');
-    tag.className = 'hq-agent-tag';
-    tag.textContent = getBuildingTypeLabel(chat.buildingType);
-
-    row.append(left, tag);
-    row.addEventListener('click', () => {
-      setSelection({ kind: 'chat', id: chat.id }, { focus: true });
-    });
-
-    frag.appendChild(row);
+      frag.appendChild(bubble);
+    }
   }
-  listEl.appendChild(frag);
+
+  if (state.foremanError) {
+    const errEl = document.createElement('p');
+    errEl.className = 'foreman-error-msg';
+    errEl.textContent = state.foremanError;
+    frag.appendChild(errEl);
+  }
+
+  container.appendChild(frag);
+  container.scrollTop = container.scrollHeight;
 }
 
 function renderChatInspector(force) {
@@ -751,13 +1292,24 @@ function renderChatInspector(force) {
 
   els.inspectorBuildingView.classList.add('is-hidden');
   els.inspectorHqView.classList.add('is-hidden');
+  els.inspectorForemanView.classList.add('is-hidden');
   els.inspectorChatView.classList.remove('is-hidden');
 
   const typeKey = chat.buildingType in BUILDING_TYPE_SVGS ? chat.buildingType : 'huis';
   els.inspChatIcon.innerHTML = BUILDING_TYPE_SVGS[typeKey];
   els.inspChatName.textContent = chat.name || 'Naamloze bouwtaak';
   els.inspChatSource.textContent = getSourceLabel(chat.source);
-  els.inspChatRole.textContent = getRoleLabel(chat.role);
+  const rosterEntry = state.hq?.roster?.find((r) => r.id === chat.id);
+  const specSource = rosterEntry || chat;
+  const specColor = getSpecialtyColor(specSource);
+  els.inspChatRole.textContent = '';
+  els.inspChatRole.className = 'specialty-pill';
+  els.inspChatRole.style.setProperty('--spec-color', specColor);
+  const inspSpecDot = document.createElement('span');
+  inspSpecDot.className = 'specialty-dot';
+  const inspSpecLabel = document.createElement('span');
+  inspSpecLabel.textContent = getSpecialtyLabel(specSource);
+  els.inspChatRole.append(inspSpecDot, inspSpecLabel);
 
   const statusInfo = getStatusInfo(chat.status);
   els.inspStatusDot.dataset.status = chat.status;
@@ -811,8 +1363,9 @@ function renderChatInspector(force) {
     els.inspWorkspaceRow.classList.add('is-hidden');
   }
 
-  if (chat.summary) {
-    els.inspSummary.textContent = chat.summary;
+  const summaryText = chat.summary || rosterEntry?.task || '';
+  if (summaryText) {
+    els.inspSummary.textContent = summaryText;
     els.inspSummary.classList.remove('is-hidden');
   } else {
     els.inspSummary.classList.add('is-hidden');
@@ -822,6 +1375,12 @@ function renderChatInspector(force) {
   setMessageText(els.inspAssistantMsg, chat.lastAssistantMessage, 'Geen antwoord vastgelegd.');
 
   els.btnDeleteChat.classList.toggle('is-hidden', !chat.isDemo);
+
+  const showAskForeman = Boolean(state.selectedAgentInHq || rosterEntry?.location === 'hq' || isHqInteriorActive());
+  els.btnAskForemanAbout?.classList.toggle('is-hidden', !showAskForeman);
+  if (els.btnAskForemanLabel && showAskForeman) {
+    els.btnAskForemanLabel.textContent = `Vraag Uitvoerder over ${chat.name || 'bouwer'}`;
+  }
 }
 
 function renderBuildingInspector(force) {
@@ -851,6 +1410,7 @@ function renderBuildingInspector(force) {
 
   els.inspectorChatView.classList.add('is-hidden');
   els.inspectorHqView.classList.add('is-hidden');
+  els.inspectorForemanView.classList.add('is-hidden');
   els.inspectorBuildingView.classList.remove('is-hidden');
 
   const typeKey = b.buildingType in BUILDING_TYPE_SVGS ? b.buildingType : 'huis';
@@ -1204,14 +1764,60 @@ function renderTooltip(item, pos) {
     return;
   }
 
-  if (item.kind === 'hq') {
-    const hq = item.hq || state.city.hq || { name: 'Shin-AI Hoofdkantoor' };
+  const itemKind = item.kind || item.type;
+
+  if (itemKind === 'hq_holo') {
+    els.tooltipName.textContent = 'Stadsstatus Holo-display';
+    els.tooltipDot.dataset.status = 'done';
+    els.tooltipStatusLabel.textContent = `Niv. ${state.city.level}`;
+    els.tooltipDetail.textContent = `${state.city.totalBuildings ?? state.buildings.length} gebouwen · ${state.city.population ?? 0} inwoners`;
+    els.tooltipHint.textContent = 'Klik voor stadsregister';
+  } else if (itemKind === 'hq_zone') {
+    const zoneNames = {
+      sleep_pods: 'Slaapcapsules',
+      lounge: 'HQ Lounge',
+      war_room: 'Swarm War Room',
+      lab: 'Server & QA Testlab',
+      command: 'Commandodesk'
+    };
+    const zoneDescs = {
+      sleep_pods: 'Rustende AI-bouwers in slaapcapsules',
+      lounge: 'Beschikbare AI-bouwers in de lounge & koffiebar',
+      war_room: 'Swarm werkstations en taakbord',
+      lab: 'Serverracks en diagnostische testconsole',
+      command: 'Executive desk van Uitvoerder Kuroda'
+    };
+    els.tooltipName.textContent = zoneNames[item.zone] || 'Hoofdkantoor';
+    els.tooltipDot.dataset.status = item.zone === 'sleep_pods' ? 'sleeping' : 'done';
+    els.tooltipStatusLabel.textContent = 'HQ Zone';
+    els.tooltipDetail.textContent = zoneDescs[item.zone] || 'Interactieve ruimte in het hoofdkantoor';
+    els.tooltipHint.textContent = 'Klik om zone te focussen';
+  } else if (itemKind === 'foreman') {
+    const foreman = state.hq?.foreman || { name: 'Uitvoerder' };
+    els.tooltipName.textContent = foreman.name || 'Uitvoerder';
+    els.tooltipDot.dataset.status = 'done';
+    els.tooltipStatusLabel.textContent = 'Privékanaal';
+    els.tooltipDetail.textContent = foreman.summary || 'Direct aanspreekpunt voor bezetting en bouwplaatsen';
+    els.tooltipHint.textContent = 'Klik om te chatten met Uitvoerder';
+  } else if (itemKind === 'hq') {
+    const hq = item.hq || state.hq || state.city.hq || { name: 'Shin-AI Hoofdkantoor' };
     els.tooltipName.textContent = hq.name || 'Shin-AI Hoofdkantoor';
     els.tooltipDot.dataset.status = state.counts.waiting > 0 ? 'waiting' : 'working';
     els.tooltipStatusLabel.textContent = `Niv. ${state.city.level}`;
     els.tooltipDetail.textContent = `${state.counts.working ?? 0} aan het werk · ${state.counts.waiting ?? 0} wacht op akkoord`;
-    els.tooltipHint.textContent = 'Klik voor hoofdkantoor';
-  } else if (item.kind === 'building') {
+    els.tooltipHint.textContent = 'Klik voor Hoofdkantoor & interieur';
+  } else if (itemKind === 'agent') {
+    const entry = state.hq?.roster?.find((r) => r.id === item.id);
+    if (!entry) {
+      tip.classList.add('is-hidden');
+      return;
+    }
+    els.tooltipName.textContent = `${entry.name || 'AI-bouwer'} · ${getRoleLabel(entry.role)}`;
+    els.tooltipDot.dataset.status = entry.status || 'sleeping';
+    els.tooltipStatusLabel.textContent = getStatusInfo(entry.status).label;
+    els.tooltipDetail.textContent = `${getZoneLabel(entry)} — ${entry.task || 'Beschikbaar'}`;
+    els.tooltipHint.textContent = entry.location === 'hq' ? 'Klik voor Hoofdkantoor' : 'Klik voor inspectie';
+  } else if (itemKind === 'building') {
     const b = item.building || state.buildings.find((x) => x.id === item.id);
     if (!b) {
       tip.classList.add('is-hidden');
@@ -1341,7 +1947,7 @@ function setProjectsModalOpen(open) {
   }
   els.projectsBackdrop.classList.toggle('is-hidden', !open);
   els.projectsBackdrop.setAttribute('aria-hidden', open ? 'false' : 'true');
-  els.btnProjects.setAttribute('aria-expanded', open ? 'true' : 'false');
+  header.setProjectsExpanded(open);
   if (open) {
     loadProjects();
     els.projectsSearch.focus();
@@ -1583,7 +2189,7 @@ function setBuildPopoverOpen(open) {
     resetDangerButtonState();
   }
   els.buildPopover.classList.toggle('is-hidden', !open);
-  els.btnBuildOrder.setAttribute('aria-expanded', open ? 'true' : 'false');
+  header.setBuildOrderExpanded(open);
   if (open) {
     setBuildFeedback('');
     els.buildName.focus();
@@ -1708,29 +2314,12 @@ els.canvas.addEventListener('pointerleave', () => {
   renderTooltip(null, null);
 });
 
-els.btnCityProgress.addEventListener('click', () => {
-  if (state.registerOpen && state.registerTab === 'city') {
-    setRegisterOpen(false);
-  } else {
-    setRegisterOpen(true, 'city');
-  }
-});
-
-for (const btn of els.filterButtons) {
-  btn.addEventListener('click', () => {
-    setFilter(btn.dataset.filter || 'all');
-  });
-}
-
 // Build Order Popover
-els.btnBuildOrder.addEventListener('click', () => {
-  setBuildPopoverOpen(!state.buildOpen);
-});
 els.btnBuildClose.addEventListener('click', () => setBuildPopoverOpen(false));
 
 document.addEventListener('pointerdown', (evt) => {
   if (!state.buildOpen) return;
-  if (els.buildPopover.contains(evt.target) || els.btnBuildOrder.contains(evt.target)) return;
+  if (els.buildPopover.contains(evt.target) || header.containsBuildOrderTarget(evt.target)) return;
   setBuildPopoverOpen(false);
 });
 
@@ -1842,14 +2431,6 @@ els.btnCityReset.addEventListener('click', async () => {
   }
 });
 
-// Audio Toggle
-els.btnAudio.addEventListener('click', () => {
-  const on = audio.toggle();
-  els.btnAudio.setAttribute('aria-pressed', on ? 'true' : 'false');
-  els.iconAudioOn.classList.toggle('is-hidden', !on);
-  els.iconAudioOff.classList.toggle('is-hidden', on);
-});
-
 // Stadsregister Drawer
 els.btnRegister.addEventListener('click', () => setRegisterOpen(!state.registerOpen));
 els.btnRegisterClose.addEventListener('click', () => setRegisterOpen(false));
@@ -1923,6 +2504,14 @@ els.btnFocusChat.addEventListener('click', () => {
   }
 });
 
+els.btnAskForemanAbout?.addEventListener('click', () => {
+  if (state.selection?.kind !== 'chat') return;
+  const chat = state.chats.find((c) => c.id === state.selection.id);
+  const name = chat?.name || 'deze bouwer';
+  openForemanPanel({ focusInput: true });
+  sendForemanMessage(`Wat is de status van ${name}?`);
+});
+
 els.btnFocusBuilding.addEventListener('click', () => {
   if (state.selection?.kind === 'building') {
     scene.focusItem?.('building', state.selection.id);
@@ -1963,9 +2552,6 @@ els.btnDeleteBuilding?.addEventListener('click', async () => {
 });
 
 // Project Import Modal Listeners
-els.btnProjects?.addEventListener('click', () => {
-  setProjectsModalOpen(!state.projectsOpen);
-});
 els.btnProjectsClose?.addEventListener('click', () => setProjectsModalOpen(false));
 els.projectsBackdrop?.addEventListener('pointerdown', (evt) => {
   if (evt.target === els.projectsBackdrop) {
@@ -2016,19 +2602,38 @@ function toggleTiltMode() {
 }
 
 function focusHq() {
-  const hqId = state.city?.hq?.id || 'hq-shin-ai';
-  setSelection({ kind: 'hq', id: hqId }, { focus: true });
+  openHqPanel({ focus: true });
 }
 
-els.btnFocusHq?.addEventListener('click', () => {
-  const hqId = state.city?.hq?.id || 'hq-shin-ai';
-  scene.focusItem?.('hq', hqId);
-});
+els.btnHqZoomToggle?.addEventListener('click', toggleHqInteriorZoom);
+els.btnHqOpenForeman?.addEventListener('click', () => openForemanPanel({ focusInput: true }));
+els.btnHqForemanInline?.addEventListener('click', () => openForemanPanel({ focusInput: true }));
 els.btnFocusHqBar?.addEventListener('click', focusHq);
+els.btnHqExitBar?.addEventListener('click', exitHqInterior);
+
+for (const btn of els.hqZoneBtns) {
+  btn.addEventListener('click', () => {
+    const zone = btn.dataset.hqZone || 'overview';
+    focusHqZone(zone, { openPanel: state.selection?.kind === 'hq' });
+  });
+}
+
+for (const chip of els.foremanChips) {
+  chip.addEventListener('click', () => {
+    const prompt = chip.dataset.prompt || chip.textContent || '';
+    sendForemanMessage(prompt);
+  });
+}
+
+els.foremanForm?.addEventListener('submit', (evt) => {
+  evt.preventDefault();
+  sendForemanMessage(els.foremanInput?.value || '');
+});
 
 els.btnZoomIn.addEventListener('click', () => scene.zoomIn?.());
 els.btnZoomOut.addEventListener('click', () => scene.zoomOut?.());
 els.btnZoomReset.addEventListener('click', () => {
+  if (isHqInteriorActive()) exitHqInterior();
   scene.resetView?.();
   syncTiltUI('3d');
 });
@@ -2046,6 +2651,11 @@ document.addEventListener('keydown', (evt) => {
       setProjectsModalOpen(false);
     } else if (state.buildOpen) {
       setBuildPopoverOpen(false);
+    } else if (isHqInteriorActive()) {
+      exitHqInterior();
+      if (state.selection?.kind === 'hq') {
+        setSelection(null);
+      }
     } else if (state.selection) {
       setSelection(null);
     } else if (state.registerOpen) {
@@ -2074,6 +2684,7 @@ document.addEventListener('keydown', (evt) => {
       break;
     case 'r':
     case 'R':
+      if (isHqInteriorActive()) exitHqInterior();
       scene.resetView?.();
       syncTiltUI('3d');
       break;
@@ -2083,7 +2694,9 @@ document.addEventListener('keydown', (evt) => {
       break;
     case 'e':
     case 'E':
-      scene.orbit?.(0.45);
+      if (!isHqInteriorActive()) {
+        scene.orbit?.(0.45);
+      }
       break;
     case 'v':
     case 'V':
@@ -2092,6 +2705,10 @@ document.addEventListener('keydown', (evt) => {
     case 'h':
     case 'H':
       focusHq();
+      break;
+    case 'u':
+    case 'U':
+      openForemanPanel({ focusInput: true });
       break;
     case '+':
     case '=':

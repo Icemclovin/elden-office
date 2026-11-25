@@ -16,7 +16,7 @@ export const VALID_BUILDING_TYPES = new Set([
   'infrastructuur',
 ]);
 
-export const HQ_LOT = { gridX: 1, gridY: -1 };
+export const HQ_LOT = { gridX: 0, gridY: 0 };
 
 const FLAT_SUBTYPES = ['glass_flat', 'cedar_tower', 'neon_flat', 'zen_penthouse', 'residence_tower'];
 const SKYSCRAPER_SUBTYPES = ['neon_spire', 'led_tower', 'cyber_citadel', 'solar_tower', 'aoyama_tower'];
@@ -129,7 +129,7 @@ const MILESTONES = [
 ];
 
 // Infinite auto-expanding spiral parcel catalog around the central Tokyo crossroads/canal.
-// Skips all boulevard axes (x % 4 === 0, y % 4 === 0) and reserves (1, -1) for the AI HQ landmark.
+// Skips all boulevard axes (x % 4 === 0, y % 4 === 0) and reserves (0, 0) for the AI HQ landmark.
 // Expands by circular shells (d^2 <= R^2) so existing lotIndex -> (gridX, gridY) mappings NEVER shift.
 const PARCEL_RING_CACHE = [];
 let cachedMaxRadius = 0;
@@ -359,7 +359,7 @@ export function computeCityMetrics(buildings, hqStats = null) {
     totalBuildings === 0 ? 0 : Math.min(100, diversityScore + infraBonus + growthBonus);
 
   const hq = {
-    id: 'hq-shin-ai',
+    id: 'hq-central',
     name: 'Shin-AI Hoofdkantoor',
     gridX: HQ_LOT.gridX,
     gridY: HQ_LOT.gridY,
@@ -411,11 +411,30 @@ export function createCityStore(cityFilePath = process.env.CITY_DATA_PATH || DEF
     return occupied;
   }
 
-  function allocateFreeLot(occupied) {
+  function getOccupiedCoords() {
+    const coords = new Set([`${HQ_LOT.gridX},${HQ_LOT.gridY}`]);
+    for (const b of buildings) {
+      if (typeof b.gridX === 'number' && typeof b.gridY === 'number') {
+        coords.add(`${b.gridX},${b.gridY}`);
+      }
+    }
+    return coords;
+  }
+
+  function allocateFreeLot(occupied, occupiedCoords = getOccupiedCoords()) {
     let idx = 0;
-    while (occupied.has(idx)) idx++;
-    occupied.add(idx);
-    return getParcelByIndex(idx);
+    while (true) {
+      if (!occupied.has(idx)) {
+        const parcel = getParcelByIndex(idx);
+        const key = `${parcel.gridX},${parcel.gridY}`;
+        if (!occupiedCoords.has(key)) {
+          occupied.add(idx);
+          occupiedCoords.add(key);
+          return parcel;
+        }
+      }
+      idx++;
+    }
   }
 
   function schedulePersist() {
@@ -462,12 +481,13 @@ export function createCityStore(cityFilePath = process.env.CITY_DATA_PATH || DEF
         resetAt = Number(data.resetAt || 0);
         hadExistingFile = true;
 
-        // Relocate any legacy building that sits on the reserved AI HQ landmark parcel (1, -1)
+        // Relocate any legacy building that sits on the reserved AI HQ landmark parcel (0, 0)
         let relocated = false;
         const occupied = getOccupiedLots();
+        const occupiedCoords = getOccupiedCoords();
         for (const b of buildings) {
           if (b.gridX === HQ_LOT.gridX && b.gridY === HQ_LOT.gridY) {
-            const parcel = allocateFreeLot(occupied);
+            const parcel = allocateFreeLot(occupied, occupiedCoords);
             b.lotIndex = parcel.lotIndex;
             b.gridX = parcel.gridX;
             b.gridY = parcel.gridY;

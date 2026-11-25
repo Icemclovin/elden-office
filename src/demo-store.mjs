@@ -9,18 +9,64 @@ import { VALID_BUILDING_TYPES } from './city-store.mjs';
 
 const VALID_SOURCES = new Set(['claude', 'antigravity', 'hermes', 'gemini', 'demo']);
 
+export const SPECIALTIES = {
+  backend_engineer: { label: 'Backend Engineer', color: '#818cf8' },
+  frontend_engineer: { label: 'Frontend Engineer', color: '#38bdf8' },
+  tester: { label: 'Tester', color: '#34d399' },
+  devops: { label: 'DevOps Engineer', color: '#2dd4bf' },
+  cybersecurity: { label: 'Cybersecurity', color: '#f87171' },
+  ui_designer: { label: 'UI Designer', color: '#f472b6' },
+  team_lead: { label: 'Teamleider', color: '#fbbf24' },
+  project_manager: { label: 'Projectmanager', color: '#a78bfa' },
+};
+
+const SPECIALTY_KEYS = Object.keys(SPECIALTIES);
+const ROLE_TO_SPECIALTY = {
+  ingenieur: 'backend_engineer',
+  verkeersplanner: 'frontend_engineer',
+  tuinarchitect: 'tester',
+  stedenbouwer: 'devops',
+  constructeur: 'ui_designer',
+  architect: 'team_lead',
+};
+
+export function resolveSpecialty(chat) {
+  let key = chat?.specialty && SPECIALTIES[chat.specialty] ? chat.specialty : null;
+  if (!key) {
+    const name = String(chat?.name || '').toLowerCase();
+    if (/@backend|\bbackend\b|\bapi\b|\bserver\b/.test(name)) key = 'backend_engineer';
+    else if (/@renderer|@scene|\bfrontend\b|\b3d\b|\bcamera\b/.test(name)) key = 'frontend_engineer';
+    else if (/@verifier|\bqa\b|\btest/.test(name)) key = 'tester';
+    else if (/@monitor|\bdevops\b|\bdeploy\b|\binfra\b|\bgateway\b/.test(name)) key = 'devops';
+    else if (/\bcyber|\bsec|\bsecurity|\baudit/.test(name)) key = 'cybersecurity';
+    else if (/@ui|\bui\b|\bhud\b|\bdesign|\bheader\b/.test(name)) key = 'ui_designer';
+    else if (/\bteamlead|\bteamleider|\barchitect|\bschema|\bmigratie/.test(name)) key = 'team_lead';
+    else if (/\bprojectmanager|\bplanning|\bsprint|\bcoordinator/.test(name)) key = 'project_manager';
+    else if (chat?.role && ROLE_TO_SPECIALTY[chat.role]) key = ROLE_TO_SPECIALTY[chat.role];
+    else {
+      const seed = `${chat?.id || ''}:${chat?.name || ''}`;
+      let h = 0;
+      for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+      key = SPECIALTY_KEYS[h % SPECIALTY_KEYS.length];
+    }
+  }
+  const info = SPECIALTIES[key];
+  return { specialty: key, specialtyLabel: info.label, color: info.color };
+}
+
 function makeStarterBuilders(now) {
   return [
     {
       id: 'demo-haruto-api',
-      name: 'Haruto — Auth Gateway',
+      name: 'Haruto — API Gateway',
       source: 'demo',
       role: 'ingenieur',
+      specialty: 'backend_engineer',
       buildingType: 'flat',
       status: 'working',
       statusMode: 'manual',
       statusLabel: statusToLabel('working'),
-      summary: 'Bouwt de nieuwe JWT-authenticatie en rate-limiting voor de hoofdserver.',
+      summary: 'Bouwt REST-endpoints, JWT-validatie en rate-limiting voor de hoofdserver.',
       lastUserMessage: 'Versterk de authenticatie-middleware en voeg integratietests toe voor alle endpoints.',
       lastAssistantMessage: 'Ik herschrijf nu de token-validatie en draai de testsuite voor de nieuwe API-laag.',
       currentTool: 'edit_file',
@@ -31,17 +77,38 @@ function makeStarterBuilders(now) {
       isDemo: true,
     },
     {
+      id: 'demo-aiko-toren',
+      name: 'Aiko — 3D Frontend Engine',
+      source: 'demo',
+      role: 'verkeersplanner',
+      specialty: 'frontend_engineer',
+      buildingType: 'wolkenkrabber',
+      status: 'working',
+      statusMode: 'manual',
+      statusLabel: statusToLabel('working'),
+      summary: 'Optimaliseert 3D-camera, interactieve HUD-koppeling en 60 fps rendering.',
+      lastUserMessage: 'Verbeter de 3D-camera en vloeiende interactie rond het Hoofdkantoor.',
+      lastAssistantMessage: 'Ik stem de camera-lerp en grondschaduwen af voor haarscherpe 60 fps weergave.',
+      currentTool: 'edit_file',
+      workspace: '~/projecten/tokyo-frontend',
+      filePath: null,
+      updatedAt: now - 25 * 1000,
+      messageCount: 26,
+      isDemo: true,
+    },
+    {
       id: 'demo-sakura-schema',
-      name: 'Sakura — Datamodel Migratie',
+      name: 'Sakura — Technisch Review',
       source: 'demo',
       role: 'architect',
+      specialty: 'team_lead',
       buildingType: 'infrastructuur',
       status: 'waiting',
       statusMode: 'manual',
       statusLabel: statusToLabel('waiting'),
-      summary: 'Wacht op jouw akkoord voor de Postgres-migratie op het spoor- en netwerkschema.',
-      lastUserMessage: 'Bereid de database-migratie voor de nieuwe stadsindex voor.',
-      lastAssistantMessage: 'De migratie vervangt de oude kolom `legacy_grid_id`. Zal ik eerst een veilige shadow-tabel aanmaken of direct migreren?',
+      summary: 'Begeleidt architectuur-review en Postgres-migratie — wacht op jouw akkoord.',
+      lastUserMessage: 'Beoordeel het datamodel en bereid de migratie voor de nieuwe stadsindex voor.',
+      lastAssistantMessage: 'De migratie vervangt de oude kolom `legacy_grid_id`. Zal ik eerst een veilige shadow-tabel aanmaken?',
       currentTool: null,
       workspace: '~/projecten/stads-db',
       filePath: null,
@@ -50,17 +117,82 @@ function makeStarterBuilders(now) {
       isDemo: true,
     },
     {
-      id: 'demo-kenji-woning',
-      name: 'Kenji — Zoekbalk Component',
+      id: 'demo-ren-park',
+      name: 'Ren — Playwright Testsuite',
+      source: 'demo',
+      role: 'tuinarchitect',
+      specialty: 'tester',
+      hqZone: 'lab',
+      buildingType: 'infrastructuur',
+      status: 'done',
+      statusMode: 'manual',
+      statusLabel: statusToLabel('done'),
+      summary: 'Playwright E2E-suite en regressietests groen — stand-by in het HQ Testlab.',
+      lastUserMessage: 'Draai de volledige Playwright browser-check zonder consolefouten.',
+      lastAssistantMessage: 'Alle 1440x900 checks en API-assertions zijn groen. Paraat in het Testlab.',
+      currentTool: null,
+      workspace: '~/projecten/snelle-scanner',
+      filePath: null,
+      updatedAt: now - 16 * 60 * 1000,
+      messageCount: 14,
+      isDemo: true,
+    },
+    {
+      id: 'demo-sora-sec',
+      name: 'Sora — Security & SOC Audit',
+      source: 'demo',
+      role: 'ingenieur',
+      specialty: 'cybersecurity',
+      hqZone: 'lab',
+      buildingType: 'flat',
+      status: 'done',
+      statusMode: 'manual',
+      statusLabel: statusToLabel('done'),
+      summary: 'Pentest, CSP-headers en kwetsbaarheidsscan afgerond — paraat in HQ Testlab.',
+      lastUserMessage: 'Controleer alle API-routes op pad-traversal, payload-limieten en veilige headers.',
+      lastAssistantMessage: 'Nul kritieke bevindingen; pad- en body-validatie zijn dichtgetimmerd.',
+      currentTool: null,
+      workspace: '~/projecten/tokyo-security',
+      filePath: null,
+      updatedAt: now - 22 * 60 * 1000,
+      messageCount: 15,
+      isDemo: true,
+    },
+    {
+      id: 'demo-mei-lounge',
+      name: 'Mei — HUD & Glass Design',
       source: 'demo',
       role: 'constructeur',
+      specialty: 'ui_designer',
+      hqZone: 'lounge',
       buildingType: 'huis',
       status: 'done',
       statusMode: 'manual',
       statusLabel: statusToLabel('done'),
-      summary: 'Compacte snelzoekbalk gebouwd met toetsenbordnavigatie en 100% geslaagde checks.',
-      lastUserMessage: 'Maak een snelle filter- en zoekbalk voor het kaveloverzicht.',
-      lastAssistantMessage: 'Taak volbracht: de zoekbalk ondersteunt directe filtertoetsen en alle tests zijn groen.',
+      summary: 'HUD-design, kleurcontrasten en typografie opgeleverd — stand-by in HQ Lounge.',
+      lastUserMessage: 'Werk de donkere glasstijl en kleurcontrasten van de HUD bij.',
+      lastAssistantMessage: 'Alle HUD-tokens zijn bijgewerkt en gecontroleerd. Beschikbaar in de lounge.',
+      currentTool: null,
+      workspace: '~/projecten/tokyo-ui',
+      filePath: null,
+      updatedAt: now - 12 * 60 * 1000,
+      messageCount: 11,
+      isDemo: true,
+    },
+    {
+      id: 'demo-kenji-woning',
+      name: 'Kenji — Sprint & Planning',
+      source: 'demo',
+      role: 'architect',
+      specialty: 'project_manager',
+      hqZone: 'war_room',
+      buildingType: 'huis',
+      status: 'done',
+      statusMode: 'manual',
+      statusLabel: statusToLabel('done'),
+      summary: 'Sprintplanning, oplevering en taakbord bijgewerkt — paraat in de HQ War Room.',
+      lastUserMessage: 'Stem de mijlpalen en oplevering tussen backend, 3D en UI af.',
+      lastAssistantMessage: 'Alle afhankelijkheden zijn ingepland en het taakbord is bijgewerkt.',
       currentTool: null,
       workspace: '~/projecten/stads-ui',
       filePath: null,
@@ -70,16 +202,17 @@ function makeStarterBuilders(now) {
     },
     {
       id: 'demo-yumi-archief',
-      name: 'Yumi — Logboek Analyse',
+      name: 'Yumi — CI/CD & Infra',
       source: 'demo',
       role: 'stedenbouwer',
+      specialty: 'devops',
       buildingType: 'huis',
       status: 'sleeping',
       statusMode: 'manual',
       statusLabel: statusToLabel('sleeping'),
-      summary: 'Slaapt na het analyseren van de historische prestatiemetingen.',
-      lastUserMessage: 'Analyseer de foutmeldingen van vorige week en vat de oorzaken samen.',
-      lastAssistantMessage: 'Alle drie de knelpunten zijn gedocumenteerd. Ik wacht op de volgende opdracht.',
+      summary: 'Deploy-pipeline en logboek-monitoring voltooid — rust uit in HQ slaapcabine.',
+      lastUserMessage: 'Analyseer de deploy-logs van vorige week en optimaliseer de build-pipeline.',
+      lastAssistantMessage: 'Alle drie de knelpunten zijn opgelost. Ik rust uit tot de volgende release.',
       currentTool: null,
       workspace: '~/projecten/observability',
       filePath: null,
@@ -91,47 +224,7 @@ function makeStarterBuilders(now) {
 }
 
 function makeFullCuratedBuilders(now) {
-  return [
-    ...makeStarterBuilders(now),
-    {
-      id: 'demo-ren-park',
-      name: 'Ren — CI & Teststraat',
-      source: 'demo',
-      role: 'tuinarchitect',
-      buildingType: 'infrastructuur',
-      status: 'working',
-      statusMode: 'manual',
-      statusLabel: statusToLabel('working'),
-      summary: 'Optimaliseert de JSONL-scanner met head/tail buffering en draait benchmarks.',
-      lastUserMessage: 'Halveer de opstarttijd van de log-scanner bij grote bestanden boven de 20 MB.',
-      lastAssistantMessage: 'Ik vervang de volledige file-read door 8 KB/32 KB chunking en meet nu de doorvoer.',
-      currentTool: 'run_command',
-      workspace: '~/projecten/snelle-scanner',
-      filePath: null,
-      updatedAt: now - 6 * 1000,
-      messageCount: 14,
-      isDemo: true,
-    },
-    {
-      id: 'demo-aiko-toren',
-      name: 'Aiko — 3D Metropool Core',
-      source: 'demo',
-      role: 'verkeersplanner',
-      buildingType: 'wolkenkrabber',
-      status: 'waiting',
-      statusMode: 'manual',
-      statusLabel: statusToLabel('waiting'),
-      summary: 'Klaar voor productie-uitrol van de 3D skyline — wacht op akkoord voor schaling.',
-      lastUserMessage: 'Zet de canary-uitrol klaar voor de nieuwe 3D stadsweergave.',
-      lastAssistantMessage: 'Canary draait op 10% verkeer met 60 fps en nul fouten. Wil je dat ik opschaal naar 100%?',
-      currentTool: null,
-      workspace: '~/projecten/tokyo-frontend',
-      filePath: null,
-      updatedAt: now - 4 * 60 * 1000,
-      messageCount: 26,
-      isDemo: true,
-    },
-  ];
+  return makeStarterBuilders(now);
 }
 
 const FRESH_PROJECTS = [
@@ -289,6 +382,7 @@ export function createDemoStore() {
       name,
       source,
       role,
+      ...(payload.specialty && SPECIALTIES[payload.specialty] ? { specialty: payload.specialty } : {}),
       ...(buildingType ? { buildingType } : {}),
       status,
       statusMode: 'manual',

@@ -82,6 +82,22 @@
     </nav>
 
     <div class="topbar-actions">
+      <button type="button" id="btn-hq" class="btn-hq" aria-pressed="false" title="Inspecteer Hoofdkantoor &amp; bezetting (toets H)">
+        <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 15.2h12M5.2 15.2V7.2L9 4.5l3.8 2.7v8M9 4.5V2.6M7.5 10.2h3M7.5 12.8h3"></path>
+        </svg>
+        <span class="btn-label-hq">Hoofdkantoor</span>
+        <kbd class="kbd-hint" aria-hidden="true">H</kbd>
+      </button>
+      <button type="button" id="btn-foreman" class="btn-foreman" aria-pressed="false" title="Open privékanaal met Uitvoerder (toets U)">
+        <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.2 4.5h11.6a1.2 1.2 0 0 1 1.2 1.2v6.6a1.2 1.2 0 0 1-1.2 1.2H7.6L4.2 16v-2.5H3.2A1.2 1.2 0 0 1 2 12.3V5.7a1.2 1.2 0 0 1 1.2-1.2Z"></path>
+          <path d="M6.2 8.2h5.6M6.2 10.6h3.6"></path>
+        </svg>
+        <span class="btn-label-foreman">Uitvoerder</span>
+        <kbd class="kbd-hint" aria-hidden="true">U</kbd>
+      </button>
+      <span class="topbar-sep" aria-hidden="true"></span>
       <button type="button" id="btn-projects" class="btn-subtle" aria-expanded="false" aria-controls="projects-modal" title="Importeer bestaande lokale projecten als gebouwen">
         <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M2.5 5.2a1.2 1.2 0 0 1 1.2-1.2h3.4l1.5 1.8h5.7a1.2 1.2 0 0 1 1.2 1.2v6.6a1.2 1.2 0 0 1-1.2 1.2H3.7a1.2 1.2 0 0 1-1.2-1.2V5.2Z"></path>
@@ -335,6 +351,12 @@
           </svg>
           <span>Focus kavel</span>
         </button>
+        <button type="button" id="btn-ask-foreman-about" class="btn-foreman is-hidden">
+          <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3.2 4.5h11.6a1.2 1.2 0 0 1 1.2 1.2v6.6a1.2 1.2 0 0 1-1.2 1.2H7.6L4.2 16v-2.5H3.2A1.2 1.2 0 0 1 2 12.3V5.7a1.2 1.2 0 0 1 1.2-1.2Z"></path>
+          </svg>
+          <span id="btn-ask-foreman-label">Vraag Uitvoerder</span>
+        </button>
         <button type="button" id="btn-delete-chat" class="btn-danger-subtle is-hidden">Verwijder bouwer</button>
       </div>
     </div>
@@ -416,7 +438,7 @@
       </div>
     </div>
 
-    <!-- AI Hoofdkantoor (HQ) Inspection View -->
+    <!-- AI Hoofdkantoor (HQ) Overview: Wie · Wat · Waar -->
     <div id="inspector-hq-view" class="inspector-view is-hidden">
       <div class="panel-header inspector-header">
         <div class="inspector-identity">
@@ -431,7 +453,7 @@
           <div class="inspector-title-wrap">
             <h2 id="insp-hq-name" class="panel-title inspector-name">Shin-AI Hoofdkantoor</h2>
             <div class="inspector-badges">
-              <span class="code-pill">AI HQ</span>
+              <span class="code-pill">Wie · Wat · Waar</span>
               <span id="insp-hq-level" class="source-pill tabular">Niv. 1 · Kustdorp</span>
             </div>
           </div>
@@ -444,57 +466,116 @@
       </div>
 
       <div class="inspector-body">
-        <section class="inspector-section" aria-label="Live bezetting hoofdkantoor">
-          <h3 class="section-heading">Live bezetting</h3>
+        <section class="inspector-section hq-summary-section" aria-label="Live bezetting hoofdkantoor">
           <div class="hq-stats-grid">
             <div class="hq-stat-cell">
-              <span class="hq-stat-top"><span class="status-dot" data-status="working"></span>Aan het werk</span>
-              <span id="insp-hq-working" class="hq-stat-val tabular">0</span>
+              <span class="hq-stat-top"><span class="status-dot" data-status="sleeping"></span>In HQ</span>
+              <span id="insp-hq-inside-stat" class="hq-stat-val tabular">0</span>
+            </div>
+            <div class="hq-stat-cell">
+              <span class="hq-stat-top"><span class="status-dot" data-status="working"></span>Op bouwplaats</span>
+              <span id="insp-hq-onsite-stat" class="hq-stat-val tabular">0</span>
             </div>
             <div class="hq-stat-cell">
               <span class="hq-stat-top"><span class="status-dot" data-status="waiting"></span>Wacht op mij</span>
               <span id="insp-hq-waiting" class="hq-stat-val tabular">0</span>
             </div>
             <div class="hq-stat-cell">
-              <span class="hq-stat-top"><span class="status-dot" data-status="done"></span>Klaar</span>
-              <span id="insp-hq-done" class="hq-stat-val tabular">0</span>
-            </div>
-            <div class="hq-stat-cell">
-              <span class="hq-stat-top"><span class="status-dot" data-status="sleeping"></span>Slaapt</span>
-              <span id="insp-hq-sleeping" class="hq-stat-val tabular">0</span>
+              <span class="hq-stat-top"><span class="status-dot" data-status="done"></span>Opgeleverd</span>
+              <span id="insp-hq-built" class="hq-stat-val tabular">0</span>
             </div>
           </div>
-          <dl class="meta-list hq-meta-list">
-            <div class="meta-row">
-              <dt>Totaal gebouwd</dt>
-              <dd id="insp-hq-built" class="tabular">0 gebouwen</dd>
+
+          <div class="hq-foreman-card">
+            <div class="hq-foreman-info">
+              <div class="hq-foreman-top">
+                <span class="status-dot" data-status="done"></span>
+                <span id="insp-hq-foreman-name" class="hq-foreman-name">Uitvoerder</span>
+                <span class="hq-foreman-scope">Alleen jij</span>
+              </div>
+              <p id="insp-hq-foreman-summary" class="hq-foreman-summary">Direct aanspreekpunt voor bezetting en bouwvoortgang.</p>
             </div>
-            <div class="meta-row">
-              <dt>Inwoners</dt>
-              <dd id="insp-hq-pop" class="tabular">0</dd>
-            </div>
-            <div class="meta-row">
-              <dt>Kavel</dt>
-              <dd id="insp-hq-coords" class="mono-val tabular">(1, -1)</dd>
-            </div>
-          </dl>
+            <button type="button" id="btn-hq-foreman-inline" class="btn-foreman btn-compact">Chat</button>
+          </div>
         </section>
 
-        <section class="inspector-section" aria-label="Uitgezonden AI-bouwers">
-          <h3 class="section-heading">Uitgezonden AI-bouwers</h3>
-          <div id="insp-hq-agents" class="hq-agents-list" role="list"></div>
+        <section id="insp-hq-inside-section" class="inspector-section" aria-label="In Hoofdkantoor">
+          <div class="hq-group-head">
+            <h3 class="section-heading">In Hoofdkantoor (slapend / beschikbaar)</h3>
+            <span id="insp-hq-inside-count" class="count-pill tabular">0</span>
+          </div>
+          <div id="insp-hq-inside-list" class="hq-roster-list" role="list"></div>
+        </section>
+
+        <section id="insp-hq-onsite-section" class="inspector-section" aria-label="Aan het werk op bouwplaatsen">
+          <div class="hq-group-head">
+            <h3 class="section-heading">Aan het werk op bouwplaatsen</h3>
+            <span id="insp-hq-onsite-count" class="count-pill tabular">0</span>
+          </div>
+          <div id="insp-hq-onsite-list" class="hq-roster-list" role="list"></div>
         </section>
       </div>
 
-      <div class="inspector-footer">
-        <button type="button" id="btn-focus-hq" class="btn-primary">
+      <div class="inspector-footer hq-footer">
+        <button type="button" id="btn-hq-zoom-toggle" class="btn-primary">
           <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="9" cy="9" r="5.5"></circle>
             <path d="M9 1.8v2.4M9 13.8v2.4M1.8 9h2.4M13.8 9h2.4"></path>
           </svg>
-          <span>Focus Hoofdkantoor</span>
+          <span id="btn-hq-zoom-label">Zoom in op HQ</span>
+        </button>
+        <button type="button" id="btn-hq-open-foreman" class="btn-foreman">
+          <svg class="icon" viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3.2 4.5h11.6a1.2 1.2 0 0 1 1.2 1.2v6.6a1.2 1.2 0 0 1-1.2 1.2H7.6L4.2 16v-2.5H3.2A1.2 1.2 0 0 1 2 12.3V5.7a1.2 1.2 0 0 1 1.2-1.2Z"></path>
+          </svg>
+          <span>Spreek Uitvoerder</span>
         </button>
       </div>
+    </div>
+
+    <!-- Uitvoerder Private Chat View -->
+    <div id="inspector-foreman-view" class="inspector-view is-hidden">
+      <div class="panel-header inspector-header foreman-header">
+        <div class="inspector-identity">
+          <div class="type-emblem type-emblem-foreman" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4.5 14a7.5 7.5 0 0 1 15 0"></path>
+              <path d="M3 14h18"></path>
+              <path d="M12 6.5V4.5"></path>
+              <path d="M7.5 17.5c1.3 1.4 2.8 2 4.5 2s3.2-.6 4.5-2"></path>
+            </svg>
+          </div>
+          <div class="inspector-title-wrap">
+            <h2 id="foreman-title" class="panel-title inspector-name">Uitvoerder</h2>
+            <div class="foreman-privacy-badge" title="Privékanaal — berichten zijn nooit zichtbaar voor AI-bouwers">
+              <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3.2" y="7.2" width="9.6" height="6.4" rx="1.4"></rect>
+                <path d="M5.4 7.2V5.1a2.6 2.6 0 0 1 5.2 0v2.1"></path>
+              </svg>
+              <span>Privékanaal · Alleen jij &amp; Uitvoerder</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-icon btn-inspector-close" aria-label="Sluit Uitvoerder-chat (Escape)">
+          <svg class="icon" viewBox="0 0 18 18" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m4.5 4.5 9 9M13.5 4.5l-9 9"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="foreman-chips-bar" role="group" aria-label="Snelle vragen aan Uitvoerder">
+        <button type="button" class="foreman-chip" data-prompt="Wie is waar?">Wie is waar?</button>
+        <button type="button" class="foreman-chip" data-prompt="Wie slaapt in HQ?">Wie slaapt in HQ?</button>
+        <button type="button" class="foreman-chip" data-prompt="Actieve bouwplaatsen">Actieve bouwplaatsen</button>
+        <button type="button" class="foreman-chip" data-prompt="Status overzicht">Status overzicht</button>
+      </div>
+
+      <div id="foreman-messages" class="foreman-messages" role="log" aria-live="polite" aria-label="Gesprek met Uitvoerder"></div>
+
+      <form id="foreman-form" class="foreman-composer" novalidate>
+        <input id="foreman-input" type="text" maxlength="280" placeholder="Vraag de Uitvoerder (bijv. Wie is waar?)…" autocomplete="off" aria-label="Bericht aan Uitvoerder">
+        <button type="submit" id="btn-foreman-send" class="btn-foreman">Verstuur</button>
+      </form>
     </div>
   </aside>
 
@@ -607,6 +688,28 @@
       <span>HQ</span>
     </button>
   </div>
+
+  <!-- Floating HQ Interior Navigation Bar (visible inside HQ) -->
+  <nav id="hq-interior-bar" class="hq-interior-bar is-hidden" role="toolbar" aria-label="Navigatie in Hoofdkantoor" aria-hidden="true">
+    <span class="hq-bar-badge">
+      <span class="status-dot" data-status="done"></span>
+      <span>HQ</span>
+    </span>
+    <span class="cluster-sep" aria-hidden="true"></span>
+    <button type="button" class="hq-zone-btn is-active" data-hq-zone="overview" aria-pressed="true">Overzicht</button>
+    <button type="button" class="hq-zone-btn" data-hq-zone="command" aria-pressed="false" title="Commandodesk (Kuroda)">Commando</button>
+    <button type="button" class="hq-zone-btn" data-hq-zone="war_room" aria-pressed="false" title="Swarm War Room">War Room</button>
+    <button type="button" class="hq-zone-btn" data-hq-zone="lab" aria-pressed="false" title="Server &amp; QA Testlab">Testlab</button>
+    <button type="button" class="hq-zone-btn" data-hq-zone="sleep_pods" aria-pressed="false" title="Slaapcapsules">Slaap</button>
+    <button type="button" class="hq-zone-btn" data-hq-zone="lounge" aria-pressed="false">Lounge</button>
+    <span class="cluster-sep hq-hint-sep" aria-hidden="true"></span>
+    <span class="hq-rpg-hint" aria-label="RPG bediening" title="WASD / Pijltjes: bewegen · E: interactie">WASD · E</span>
+    <span class="cluster-sep" aria-hidden="true"></span>
+    <button type="button" id="btn-hq-exit-bar" class="hq-exit-btn" title="Verlaat HQ-weergave (Esc)">
+      <span>Naar buiten</span>
+      <kbd class="kbd-hint" aria-hidden="true">Esc</kbd>
+    </button>
+  </nav>
 
   <!-- Quiet Bottom-Center 3D Camera Hint -->
   <div id="camera-hint" class="camera-hint" aria-hidden="true">

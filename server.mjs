@@ -4,8 +4,8 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { scanAllRealChats } from './src/scanners.mjs';
-import { createCityStore } from './src/city-store.mjs';
-import { createDemoStore } from './src/demo-store.mjs';
+import { createCityStore, HQ_LOT } from './src/city-store.mjs';
+import { createDemoStore, resolveSpecialty } from './src/demo-store.mjs';
 import { listLocalProjects } from './src/project-scanner.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,11 +45,127 @@ const sseClients = new Set();
 // In-memory static asset cache: targetFile -> { mtimeMs, size, etag, mime, raw, gzip }
 const staticCache = new Map();
 
+const MAX_FOREMAN_MESSAGES = 100;
+let foremanMsgSeq = 1;
+// Private channel strictly between user and Uitvoerder Kuroda (never shared with other agents)
+const foremanMessages = [
+  {
+    id: 'msg-welcome',
+    sender: 'foreman',
+    text: 'Welkom in het Shin-AI Hoofdkantoor. Ik ben Kuroda, jouw persoonlijke Uitvoerder (privékanaal). Vraag "wie is waar", "wie slaapt", "wie werkt", "status" of gebruik "focus hq", "focus <naam>" of "bouw <naam>".',
+    createdAt: startedAt,
+  },
+];
+
+const HQ_ZONE_LABELS = {
+  sleep_pods: 'Hoofdkantoor · Slaapcabines',
+  war_room: 'Hoofdkantoor · War Room',
+  lab: 'Hoofdkantoor · Testlab',
+  lounge: 'Hoofdkantoor · Lounge',
+};
+
+function buildHqState(enrichedChats, buildings, counts) {
+  const buildingById = new Map(buildings.map((b) => [b.id, b]));
+  let siteCount = 0;
+  let sleepingCount = 0;
+  let loungeCount = 0;
+
+  const roster = enrichedChats.map((chat) => {
+    const isSite = chat.status === 'working' || chat.status === 'waiting';
+    const isSleeping = chat.status === 'sleeping';
+    const building = chat.builtBuildingId ? buildingById.get(chat.builtBuildingId) : null;
+    const spec = {
+      specialty: chat.specialty,
+      specialtyLabel: chat.specialtyLabel,
+      color: chat.color,
+    };
+
+    if (isSite) {
+      siteCount++;
+      const locationLabel = building
+        ? `${building.name} (${chat.gridX}, ${chat.gridY})`
+        : `Bouwplaats (${chat.gridX}, ${chat.gridY})`;
+      return {
+        id: chat.id,
+        name: chat.name,
+        role: chat.role || 'bouwer',
+        ...spec,
+        status: chat.status,
+        location: 'site',
+        locationLabel,
+        zone: 'site',
+        buildingId: chat.builtBuildingId || null,
+        gridX: chat.gridX,
+        gridY: chat.gridY,
+        task: chat.summary || chat.lastAssistantMessage || chat.statusLabel || '',
+      };
+    }
+
+    if (isSleeping) {
+      sleepingCount++;
+      return {
+        id: chat.id,
+        name: chat.name,
+        role: chat.role || 'bouwer',
+        ...spec,
+        status: chat.status,
+        location: 'hq',
+        locationLabel: HQ_ZONE_LABELS.sleep_pods,
+        zone: 'sleep_pods',
+        buildingId: chat.builtBuildingId || null,
+        gridX: HQ_LOT.gridX,
+        gridY: HQ_LOT.gridY,
+        task: chat.summary || chat.lastAssistantMessage || 'Rust uit in slaapcabine',
+      };
+    }
+
+    loungeCount++;
+    const hqZone = chat.hqZone === 'war_room' || chat.hqZone === 'lab' ? chat.hqZone : 'lounge';
+    return {
+      id: chat.id,
+      name: chat.name,
+      role: chat.role || 'bouwer',
+      ...spec,
+      status: chat.status,
+      location: 'hq',
+      locationLabel: HQ_ZONE_LABELS[hqZone],
+      zone: hqZone,
+      buildingId: chat.builtBuildingId || null,
+      gridX: HQ_LOT.gridX,
+      gridY: HQ_LOT.gridY,
+      task: chat.summary || chat.lastAssistantMessage || 'Beschikbaar in HQ',
+    };
+  });
+
+  const hqCount = sleepingCount + loungeCount;
+  const summary =
+    roster.length === 0
+      ? 'Hoofdkantoor paraat — geen actieve agents geregistreerd.'
+      : `${siteCount} op bouwplaatsen (${counts.working} actief, ${counts.waiting} wachtend) · ${hqCount} in HQ (${sleepingCount} slapend, ${loungeCount} stand-by)`;
+
+  return {
+    id: 'hq-central',
+    name: 'Shin-AI Hoofdkantoor',
+    gridX: HQ_LOT.gridX,
+    gridY: HQ_LOT.gridY,
+    foreman: {
+      id: 'foreman-uitvoerder',
+      name: 'Kuroda',
+      role: 'Uitvoerder',
+      status: 'online',
+      channelScope: 'user-only',
+      summary,
+    },
+    roster,
+  };
+}
+
 let latestRealChats = [];
 let latestState = {
   chats: [],
   buildings: [],
   city: cityStore.getCityMetrics(),
+  hq: buildHqState([], [], { total: 0, working: 0, waiting: 0, done: 0, sleeping: 0 }),
   counts: { total: 0, working: 0, waiting: 0, done: 0, sleeping: 0 },
   demoActive: false,
   updatedAt: Date.now(),
@@ -80,7 +196,9 @@ function broadcastState(stateJsonStr) {
 
 function commitState(forceBroadcast = false) {
   const merged = demoStore.getMergedChats(latestRealChats);
-  const enrichedChats = cityStore.syncChatsWithCity(merged.chats);
+  const enrichedChats = cityStore
+    .syncChatsWithCity(merged.chats)
+    .map((c) => ({ ...c, ...resolveSpecialty(c) }));
   const buildings = cityStore.getBuildings();
 
   latestRealCount = merged.realCount;
@@ -103,10 +221,13 @@ function commitState(forceBroadcast = false) {
     totalAgents: enrichedChats.length,
   });
 
+  const hq = buildHqState(enrichedChats, buildings, counts);
+
   const signature = JSON.stringify({
     chats: enrichedChats,
     buildings,
     city,
+    hq,
     counts,
     demoActive: merged.demoActive,
   });
@@ -117,6 +238,7 @@ function commitState(forceBroadcast = false) {
       chats: enrichedChats,
       buildings,
       city,
+      hq,
       counts,
       demoActive: merged.demoActive,
       updatedAt: Date.now(),
@@ -328,6 +450,136 @@ async function serveStatic(req, res, pathname) {
   }
 }
 
+function pushForemanMessage(entry) {
+  foremanMessages.push(entry);
+  if (foremanMessages.length > MAX_FOREMAN_MESSAGES) {
+    foremanMessages.splice(0, foremanMessages.length - MAX_FOREMAN_MESSAGES);
+  }
+}
+
+async function handleForemanChat(rawMessage) {
+  const text = typeof rawMessage === 'string' ? rawMessage.trim().slice(0, 500) : '';
+  if (!text) {
+    throw Object.assign(new Error('Bericht mag niet leeg zijn'), { statusCode: 400 });
+  }
+
+  pushForemanMessage({
+    id: `msg-${++foremanMsgSeq}`,
+    sender: 'user',
+    text,
+    createdAt: Date.now(),
+  });
+
+  const lower = text.toLowerCase();
+  const { hq, buildings, city, counts } = latestState;
+  const roster = hq.roster || [];
+  let reply = '';
+  let action = null;
+
+  const focusMatch = text.match(/^(?:focus|ga naar|toon)\s+(.+)$/i);
+  const buildMatch = text.match(/^bouw\s+(.+)$/i);
+
+  if (buildMatch) {
+    const buildName = buildMatch[1].trim().slice(0, 60);
+    const created = demoStore.createCustomChat({
+      name: buildName,
+      status: 'working',
+      summary: `Bouwopdracht gestart via Uitvoerder Kuroda: ${buildName}.`,
+    });
+    const { building } = cityStore.recordBuildingForChat(created);
+    commitState(false);
+    await cityStore.flush();
+    action = { type: 'focus_building', id: building.id };
+    reply = `Bouwopdracht "${building.name}" (${building.code}) uitgezet op kavel (${building.gridX}, ${building.gridY}). Camera focust op de nieuwe bouwplaats.`;
+  } else if (focusMatch) {
+    const target = focusMatch[1].trim();
+    const targetLower = target.toLowerCase();
+    if (/^(?:hq|hoofdkantoor|kuroda|uitvoerder)$/.test(targetLower)) {
+      action = { type: 'focus_hq' };
+      reply = `Camera gericht op het ${hq.name} op kavel (${hq.gridX}, ${hq.gridY}).`;
+    } else {
+      const agent = roster.find(
+        (a) => a.name.toLowerCase().includes(targetLower) || a.id.toLowerCase() === targetLower
+      );
+      if (agent) {
+        action = { type: 'focus_agent', id: agent.id };
+        reply = `Focus op ${agent.name} (${agent.role}, ${agent.status}) — ${agent.locationLabel}.`;
+      } else {
+        const bldg = buildings.find(
+          (b) =>
+            b.name.toLowerCase().includes(targetLower) ||
+            b.code.toLowerCase() === targetLower ||
+            b.id.toLowerCase() === targetLower
+        );
+        if (bldg) {
+          action = { type: 'focus_building', id: bldg.id };
+          reply = `Focus op ${bldg.code} ${bldg.name} op kavel (${bldg.gridX}, ${bldg.gridY}).`;
+        } else {
+          reply = `Geen agent of gebouw gevonden met "${target}". Vraag "wie is waar" voor het actuele overzicht.`;
+        }
+      }
+    }
+  } else if (/\b(help|commando|commando's|wat kan je)\b/i.test(lower)) {
+    reply =
+      'Privé-commando\'s met Uitvoerder Kuroda:\n' +
+      '• "wie is waar" / "overzicht" — volledige verdeling HQ vs. bouwplaatsen\n' +
+      '• "wie werkt" — actieve en wachtende bouwers op kavels\n' +
+      '• "wie slaapt" — slapende agents in HQ slaapcabines\n' +
+      '• "status" — stadsniveau, gebouwen en bezetting\n' +
+      '• "focus hq" / "focus <naam>" — richt camera op HQ, agent of gebouw\n' +
+      '• "bouw <naam>" — start direct een nieuwe bouwopdracht';
+  } else if (/\b(wie slaapt|slaapt|slapen|slaapcabine|sleep)\b/i.test(lower)) {
+    const sleepers = roster.filter((a) => a.zone === 'sleep_pods');
+    reply =
+      sleepers.length === 0
+        ? 'Er slaapt momenteel niemand in het Hoofdkantoor.'
+        : `Slapend in HQ (${sleepers.length}): ${sleepers.map((a) => `${a.name} (${a.role})`).join(', ')}.`;
+  } else if (/\b(wie werkt|actief|bouwplaats|bouwplaatsen|aan het werk)\b/i.test(lower)) {
+    const onSite = roster.filter((a) => a.location === 'site');
+    reply =
+      onSite.length === 0
+        ? 'Er zijn momenteel geen agents actief op bouwplaatsen.'
+        : `Op bouwplaatsen (${onSite.length}): ${onSite
+            .map((a) => `${a.name} [${a.status}] @ ${a.locationLabel}`)
+            .join(' · ')}.`;
+  } else if (/\b(wie is waar|waar is|overzicht|rooster|roster)\b/i.test(lower)) {
+    const onSite = roster.filter((a) => a.location === 'site');
+    const sleepers = roster.filter((a) => a.zone === 'sleep_pods');
+    const standby = roster.filter((a) => a.location === 'hq' && a.zone !== 'sleep_pods');
+    const parts = [
+      `Bouwplaatsen (${onSite.length}): ${
+        onSite.length ? onSite.map((a) => `${a.name} [${a.status}] op (${a.gridX},${a.gridY})`).join(', ') : 'geen'
+      }`,
+      `HQ Slaapcabines (${sleepers.length}): ${
+        sleepers.length ? sleepers.map((a) => a.name).join(', ') : 'geen'
+      }`,
+      `HQ Stand-by (${standby.length}): ${
+        standby.length ? standby.map((a) => `${a.name} (${a.zone})`).join(', ') : 'geen'
+      }`,
+    ];
+    reply = parts.join('\n');
+  } else if (/\bstatus\b/i.test(lower)) {
+    reply = `Shin-AI Tokyo · Niveau ${city.level} (${city.name}) — ${city.totalBuildings} gebouwen, ${city.population} inwoners, score ${city.beautyScore}/100. Agents: ${counts.working} actief, ${counts.waiting} wachtend, ${counts.sleeping} slapend in HQ, ${counts.done} stand-by in HQ lounge.`;
+  } else {
+    reply = `Kuroda hier (privékanaal). ${latestState.hq.foreman.summary}. Typ "wie is waar", "status", "focus hq", "bouw <naam>" of "help".`;
+  }
+
+  pushForemanMessage({
+    id: `msg-${++foremanMsgSeq}`,
+    sender: 'foreman',
+    text: reply,
+    createdAt: Date.now(),
+    ...(action ? { action } : {}),
+  });
+
+  return {
+    foreman: latestState.hq.foreman,
+    reply,
+    messages: foremanMessages,
+    action,
+  };
+}
+
 async function handleApi(req, res, pathname) {
   const method = req.method || 'GET';
 
@@ -346,6 +598,19 @@ async function handleApi(req, res, pathname) {
 
   if (method === 'GET' && (pathname === '/api/state' || pathname === '/api/chats')) {
     return sendCachedState(req, res);
+  }
+
+  if (method === 'GET' && pathname === '/api/foreman/messages') {
+    return sendJson(req, res, 200, {
+      foreman: latestState.hq.foreman,
+      messages: foremanMessages,
+    });
+  }
+
+  if (method === 'POST' && pathname === '/api/foreman/chat') {
+    const body = await readJsonBody(req);
+    const result = await handleForemanChat(body.message);
+    return sendJson(req, res, 200, result);
   }
 
   if (method === 'GET' && pathname === '/api/projects') {

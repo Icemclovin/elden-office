@@ -81,25 +81,68 @@ function bakeRadialSprite(size, stops) {
 }
 
 function bakeTwilightBackdrop() {
+  const w = 512;
+  const h = 512;
   const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 256;
+  c.width = w;
+  c.height = h;
   const g = c.getContext('2d');
-  const lin = g.createLinearGradient(0, 0, 0, 256);
-  lin.addColorStop(0, '#0e1420');
-  lin.addColorStop(0.36, '#162030');
-  lin.addColorStop(0.75, '#192434');
-  lin.addColorStop(1, '#101824');
+  const lin = g.createLinearGradient(0, 0, 0, h);
+  lin.addColorStop(0, '#070b14');
+  lin.addColorStop(0.24, '#0f1729');
+  lin.addColorStop(0.48, '#192338');
+  lin.addColorStop(0.70, '#182436');
+  lin.addColorStop(1, '#0c121e');
   g.fillStyle = lin;
-  g.fillRect(0, 0, 256, 256);
+  g.fillRect(0, 0, w, h);
 
-  // Subtle warm Tokyo dusk horizon glow near upper center
-  const dusk = g.createRadialGradient(128, 38, 12, 128, 52, 175);
-  dusk.addColorStop(0, 'rgba(244, 158, 92, 0.16)');
-  dusk.addColorStop(0.45, 'rgba(196, 108, 96, 0.08)');
-  dusk.addColorStop(1, 'rgba(20, 28, 42, 0)');
+  // Atmospheric Tokyo twilight dusk horizon glow
+  const dusk = g.createRadialGradient(w * 0.5, h * 0.20, 18, w * 0.5, h * 0.24, w * 0.68);
+  dusk.addColorStop(0, 'rgba(251, 166, 98, 0.22)');
+  dusk.addColorStop(0.38, 'rgba(196, 108, 118, 0.11)');
+  dusk.addColorStop(0.72, 'rgba(56, 112, 168, 0.06)');
+  dusk.addColorStop(1, 'rgba(12, 18, 30, 0)');
   g.fillStyle = dusk;
-  g.fillRect(0, 0, 256, 256);
+  g.fillRect(0, 0, w, h);
+
+  // Subtle cyan atmospheric haze band along mid-horizon
+  const haze = g.createLinearGradient(0, h * 0.14, 0, h * 0.42);
+  haze.addColorStop(0, 'rgba(56, 189, 248, 0)');
+  haze.addColorStop(0.5, 'rgba(56, 189, 248, 0.055)');
+  haze.addColorStop(1, 'rgba(15, 23, 42, 0)');
+  g.fillStyle = haze;
+  g.fillRect(0, h * 0.14, w, h * 0.28);
+
+  // Faint distant Tokyo skyline silhouette on upper horizon
+  g.fillStyle = 'rgba(12, 19, 32, 0.52)';
+  let sx = 0;
+  let sSeed = 7331;
+  while (sx < w) {
+    sSeed = (Math.imul(sSeed, 1664525) + 1013904223) >>> 0;
+    const bw = 10 + (sSeed % 22);
+    sSeed = (Math.imul(sSeed, 1664525) + 1013904223) >>> 0;
+    const bh = 12 + (sSeed % 42);
+    g.fillRect(sx, h * 0.24 - bh, bw - 2, bh + 16);
+    sx += bw;
+  }
+  return c;
+}
+
+function bakeHQStudioBackdrop() {
+  const w = 512;
+  const h = 512;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d');
+  g.fillStyle = '#060a12';
+  g.fillRect(0, 0, w, h);
+  const rad = g.createRadialGradient(w * 0.46, h * 0.5, 24, w * 0.48, h * 0.5, w * 0.62);
+  rad.addColorStop(0, '#111a2c');
+  rad.addColorStop(0.55, '#090f1a');
+  rad.addColorStop(1, '#05080f');
+  g.fillStyle = rad;
+  g.fillRect(0, 0, w, h);
   return c;
 }
 
@@ -181,18 +224,25 @@ export function getCityAssets() {
       [0.70, 'rgba(219, 39, 119, 0.14)'],
       [1, 'rgba(219, 39, 119, 0)'],
     ]),
+    glowGold: bakeRadialSprite(128, [
+      [0, 'rgba(255, 247, 204, 0.94)'],
+      [0.30, 'rgba(251, 191, 36, 0.56)'],
+      [0.66, 'rgba(217, 119, 6, 0.18)'],
+      [1, 'rgba(217, 119, 6, 0)'],
+    ]),
     glowMoon: bakeRadialSprite(128, [
       [0, 'rgba(148, 163, 184, 0.34)'],
       [0.55, 'rgba(71, 85, 105, 0.14)'],
       [1, 'rgba(30, 41, 59, 0)'],
     ]),
     contactShadow: bakeRadialSprite(128, [
-      [0, 'rgba(6, 10, 18, 0.68)'],
-      [0.52, 'rgba(6, 10, 18, 0.36)'],
-      [0.82, 'rgba(6, 10, 18, 0.10)'],
+      [0, 'rgba(4, 8, 15, 0.78)'],
+      [0.48, 'rgba(6, 10, 18, 0.44)'],
+      [0.80, 'rgba(6, 10, 18, 0.12)'],
       [1, 'rgba(6, 10, 18, 0)'],
     ]),
     backdrop: bakeTwilightBackdrop(),
+    hqStudioBackdrop: bakeHQStudioBackdrop(),
     vignette: bakeVignetteSprite(),
     concreteGrain: bakeConcreteGrainTile(),
   };
@@ -285,7 +335,25 @@ export function drawExtrudedBox3D(ctx, project, cx, cy, hx, hy, z0, z1, colors, 
   for (let i = 0; i < vis.length; i++) {
     const f = vis[i];
     fillQuad(ctx, f.pts[0], f.pts[1], f.pts[2], f.pts[3], f.fill, strokeColor, lw);
+    // Subtle ground ambient-occlusion contact edge at base of wall
+    if (z0 <= 3.5) {
+      ctx.strokeStyle = 'rgba(4, 8, 16, 0.55)';
+      ctx.lineWidth = Math.max(1.0, 2.0 * b0.scale);
+      ctx.beginPath();
+      ctx.moveTo(f.pts[0].sx, f.pts[0].sy);
+      ctx.lineTo(f.pts[1].sx, f.pts[1].sy);
+      ctx.stroke();
+    }
     if (onFace) onFace(f);
+    // Crisp architectural rim highlight along top edge of sunlit faces
+    if (f.name === 'south' || f.name === 'east') {
+      ctx.strokeStyle = 'rgba(226, 232, 240, 0.18)';
+      ctx.lineWidth = Math.max(0.6, 1.0 * b0.scale);
+      ctx.beginPath();
+      ctx.moveTo(f.pts[3].sx, f.pts[3].sy);
+      ctx.lineTo(f.pts[2].sx, f.pts[2].sy);
+      ctx.stroke();
+    }
   }
 
   // Roof face (z = z1)
@@ -2609,8 +2677,30 @@ export function drawConstructionSite3D(ctx, project, wx, wy, chat, state, time, 
   ctx.fillStyle = '#fde68a';
   ctx.fillRect(hook.sx - 6 * hook.scale, hook.sy - 1.5 * hook.scale, 12 * hook.scale, 3 * hook.scale);
 
-  // --- WORKING: Hovering AI Builder Drone + Rising Welding Sparks ---
+  // --- WORKING: Hovering AI Builder Drone + Active Patrolling Hard-Hat Agent + Welding Sparks ---
   if (isWorking) {
+    const mot = state.agentMotion?.get(chat.id);
+    const agX = mot ? wx + mot.x : wx + 24;
+    const agY = mot ? wy + mot.y : wy + 28;
+    drawAgentFigure3D(
+      ctx,
+      project,
+      agX,
+      agY,
+      2.4,
+      {
+        mode: 'working',
+        phase,
+        scale: 1.08,
+        seed: hashString(chat.id || chat.name),
+        isWalking: mot ? mot.isWalking : false,
+        walkCycle: mot ? mot.walkPhase : 0,
+        facing: mot ? mot.facing : 1,
+      },
+      t,
+      reducedMotion,
+      assets
+    );
     const droneAngle = reducedMotion ? 1.1 : t * 2.1 + phase;
     const dx = wx + Math.cos(droneAngle) * 20;
     const dy = wy + Math.sin(droneAngle) * 16;
@@ -2643,8 +2733,19 @@ export function drawConstructionSite3D(ctx, project, wx, wy, chat, state, time, 
     }
   }
 
-  // --- WAITING: Crisp Bobbing High 3D Vermilion '!' Approval Beacon ---
+  // --- WAITING: Active Waiting Agent Figure + Crisp Bobbing High 3D Vermilion '!' Approval Beacon ---
   if (status === 'waiting') {
+    drawAgentFigure3D(
+      ctx,
+      project,
+      wx + 24,
+      wy + 28,
+      2.4,
+      { mode: 'waiting', phase, scale: 1.08 },
+      t,
+      reducedMotion,
+      assets
+    );
     const bobZ = reducedMotion ? frameH + 54 : frameH + 54 + Math.sin(t * 4.6 + phase) * 6;
     const bp = project(wx, wy, bobZ);
     const bs = bp.scale;
@@ -2867,4 +2968,1477 @@ export function drawCityLabelHUD(ctx, cx, cy, metrics, item, state, time, reduce
   ctx.fillText(badgeText, tagX + badgeW / 2, cy + 0.4);
 
   ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
+// 3D Stylized AI Agent Figures (Hard-Hat Builders, Uitvoerder, Lounge, Sleep)
+// ---------------------------------------------------------------------------
+function drawCompactTag(ctx, cx, cy, text, accentColor, bgColor, scale = 1, alpha = 1) {
+  if (alpha <= 0.03 || scale <= 0.18) return;
+  const fs = Math.max(8.5, Math.min(12.5, 9.8 * scale));
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.font = `600 ${fs.toFixed(1)}px ${FONT_UI}`;
+  const label = truncateText(ctx, text, 148 * Math.min(1.15, Math.max(0.8, scale)));
+  const tw = Math.ceil(ctx.measureText(label).width);
+  const padX = Math.max(5, 6.5 * scale);
+  const w = tw + padX * 2 + 8;
+  const h = Math.max(15, 17 * scale);
+  const left = cx - w * 0.5;
+  const top = cy - h * 0.5;
+
+  ctx.fillStyle = 'rgba(4, 7, 13, 0.72)';
+  drawRoundedRectPath(ctx, left + 1, top + 1.5, w, h, 4);
+  ctx.fill();
+
+  ctx.fillStyle = bgColor || 'rgba(11, 17, 28, 0.94)';
+  drawRoundedRectPath(ctx, left, top, w, h, 4);
+  ctx.fill();
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = accentColor;
+  ctx.beginPath();
+  ctx.arc(left + padX + 1.5, cy, Math.max(2, 2.5 * Math.min(1.1, scale)), 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, left + padX + 7, cy + 0.3);
+  ctx.restore();
+}
+
+const SKIN_TONES = ['#f5d0b5', '#e8b896', '#d69e78', '#f0c4a8', '#c68863'];
+const HAIR_COLORS = ['#1e293b', '#3b2618', '#0f172a', '#5c3a21', '#475569'];
+const SPECIALTY_COLORS = ['#818cf8', '#38bdf8', '#34d399', '#2dd4bf', '#f87171', '#f472b6', '#fbbf24', '#a78bfa'];
+
+function resolveAgentColor(agent, seed) {
+  if (agent && typeof agent.color === 'string' && agent.color.startsWith('#')) return agent.color;
+  return SPECIALTY_COLORS[Math.abs(seed || 0) % SPECIALTY_COLORS.length];
+}
+
+export function drawAgentFigure3D(ctx, project, wx, wy, wz, opts, time, reducedMotion, assets) {
+  const mode = opts?.mode || 'working'; // 'working' | 'waiting' | 'foreman' | 'lounge' | 'sleeping'
+  const phase = opts?.phase || 0;
+  const figScale = opts?.scale || 1;
+  const seed = opts?.seed != null ? opts.seed : Math.round(phase * 1000);
+  const facing = opts?.facing === -1 ? -1 : 1;
+  const isWalking = Boolean(opts?.isWalking) && !reducedMotion;
+  const walkCycle = opts?.walkCycle || 0;
+  const t = reducedMotion ? 0 : time;
+  const base = project(wx, wy, wz);
+  const s = base.scale * figScale;
+  if (s <= 0.06) return base;
+
+  const selected = Boolean(opts?.selected);
+  const hovered = Boolean(opts?.hovered);
+  const skinCol = SKIN_TONES[seed % SKIN_TONES.length];
+  const hairCol = mode === 'foreman' ? '#cbd5e1' : HAIR_COLORS[(seed >>> 3) % HAIR_COLORS.length];
+
+  // Sleeping agent: reclined resting figure inside sleep pod + soft indigo/cyan canopy + Zzz
+  if (mode === 'sleeping') {
+    const podCenter = project(wx, wy, wz + 4.5);
+    const ps = podCenter.scale * figScale;
+    stampSprite(ctx, assets.glowCyan, podCenter.sx, podCenter.sy, 14 * ps, 9 * ps, 0.34, true);
+
+    // Pillow
+    ctx.fillStyle = '#cbd5e1';
+    ctx.beginPath();
+    ctx.ellipse(podCenter.sx - 4.8 * ps, podCenter.sy - 0.2 * ps, 2.4 * ps, 1.8 * ps, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Reclined torso under soft slate-indigo blanket
+    ctx.fillStyle = selected ? '#38bdf8' : '#334155';
+    ctx.strokeStyle = hovered ? '#f8fafc' : '#818cf8';
+    ctx.lineWidth = Math.max(0.8, 1.1 * ps);
+    ctx.beginPath();
+    ctx.ellipse(podCenter.sx + 1.8 * ps, podCenter.sy + 0.9 * ps, 6.0 * ps, 2.8 * ps, -0.14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Resting head + hair
+    ctx.fillStyle = skinCol;
+    ctx.beginPath();
+    ctx.arc(podCenter.sx - 4.4 * ps, podCenter.sy - 0.6 * ps, 2.3 * ps, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = hairCol;
+    ctx.beginPath();
+    ctx.arc(podCenter.sx - 4.8 * ps, podCenter.sy - 1.1 * ps, 2.2 * ps, Math.PI * 0.7, Math.PI * 1.9);
+    ctx.fill();
+
+    // Gentle rising Zzz
+    const zP = reducedMotion ? 0.5 : ((t * 0.42 + phase * 0.2) % 1);
+    const zp = project(wx - 2, wy - 1, wz + 10 + zP * 14);
+    ctx.save();
+    ctx.font = `700 ${Math.max(8, Math.round(9.5 * zp.scale))}px ${FONT_UI}`;
+    ctx.fillStyle = `rgba(186, 230, 253, ${(Math.sin(zP * Math.PI) * 0.88).toFixed(3)})`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(zP > 0.55 ? 'Zzz' : 'z', zp.sx, zp.sy);
+    ctx.restore();
+    return podCenter;
+  }
+
+  // Articulated upright human figure with walk-cycle stride & subtle idle breathing
+  const breathe = reducedMotion ? 0 : Math.sin(t * 2.4 + phase) * 0.45;
+  const walkBob = isWalking ? Math.abs(Math.sin(walkCycle)) * 1.35 : 0;
+  const workBob = !isWalking && mode === 'working' && !reducedMotion ? Math.abs(Math.sin(t * 5.2 + phase)) * 0.8 : 0;
+  const bob = breathe + walkBob + workBob;
+
+  const hipPos = project(wx, wy, wz + 6.4 + bob * 0.4);
+  const torsoPos = project(wx, wy, wz + 10.6 + bob * 0.7);
+  const headPos = project(wx, wy, wz + 15.8 + bob);
+
+  // Crisp ground contact shadow
+  stampSprite(ctx, assets.contactShadow, base.sx, base.sy + 0.8 * s, 7.6 * s, 4.4 * s, 0.78, false);
+
+  // Selection / hover / specialty ground ring under feet
+  const specCol = opts?.color || SPECIALTY_COLORS[Math.abs(seed) % SPECIALTY_COLORS.length];
+  if (selected || hovered) {
+    ctx.strokeStyle = selected ? '#38bdf8' : 'rgba(248, 250, 252, 0.88)';
+    ctx.lineWidth = Math.max(1.2, 1.8 * s);
+    ctx.beginPath();
+    ctx.ellipse(base.sx, base.sy, 8.2 * s, 4.8 * s, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (mode !== 'foreman') {
+    ctx.save();
+    ctx.globalAlpha *= 0.45;
+    ctx.strokeStyle = specCol;
+    ctx.lineWidth = Math.max(0.9, 1.2 * s);
+    ctx.beginPath();
+    ctx.ellipse(base.sx, base.sy, 6.8 * s, 3.8 * s, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Subtle status aura
+  if (mode === 'foreman') {
+    stampSprite(ctx, assets.glowGold, torsoPos.sx, torsoPos.sy, 20 * s, 16 * s, 0.38, true);
+  } else if (mode === 'working' && !isWalking) {
+    stampSprite(ctx, assets.glowAmber, torsoPos.sx, torsoPos.sy, 15 * s, 12 * s, 0.30, true);
+  } else if (mode === 'waiting') {
+    const pulse = reducedMotion ? 0.8 : 0.55 + 0.45 * Math.sin(t * 5.4 + phase);
+    stampSprite(ctx, assets.glowAmber, headPos.sx, headPos.sy - 6 * s, 18 * s, 18 * s, 0.52 * pulse, true);
+  }
+
+  // Alternating articulated legs & shoes
+  const stride = isWalking ? Math.sin(walkCycle) * 3.4 * s * facing : 0;
+  const liftA = isWalking ? Math.max(0, Math.cos(walkCycle)) * 1.4 * s : 0;
+  const liftB = isWalking ? Math.max(0, -Math.cos(walkCycle)) * 1.4 * s : 0;
+  const footAx = base.sx - 1.6 * s + stride;
+  const footAy = base.sy - liftA;
+  const footBx = base.sx + 1.6 * s - stride;
+  const footBy = base.sy - liftB;
+
+  const trouserCol = mode === 'foreman' ? '#0f172a' : mode === 'lounge' ? '#1e293b' : '#1e293b';
+  ctx.strokeStyle = trouserCol;
+  ctx.lineWidth = Math.max(1.4, 2.2 * s);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(hipPos.sx - 1.4 * s, hipPos.sy);
+  ctx.lineTo(footAx, footAy);
+  ctx.moveTo(hipPos.sx + 1.4 * s, hipPos.sy);
+  ctx.lineTo(footBx, footBy);
+  ctx.stroke();
+
+  // Shoes
+  ctx.fillStyle = mode === 'foreman' ? '#292524' : '#0f172a';
+  ctx.beginPath();
+  ctx.ellipse(footAx + 0.7 * s * facing, footAy + 0.2 * s, 1.7 * s, 0.9 * s, 0, 0, Math.PI * 2);
+  ctx.ellipse(footBx + 0.7 * s * facing, footBy + 0.2 * s, 1.7 * s, 0.9 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Back arm (swings opposite to front leg)
+  const armSwing = isWalking ? Math.sin(walkCycle) * 3.2 * s * facing : 0;
+  const jacketCol =
+    mode === 'foreman'
+      ? '#1e293b'
+      : mode === 'waiting'
+        ? '#ef4444'
+        : mode === 'working'
+          ? opts?.color || '#f59e0b'
+          : specCol;
+
+  ctx.strokeStyle = mode === 'working' || mode === 'waiting' ? '#334155' : jacketCol;
+  ctx.lineWidth = Math.max(1.2, 1.8 * s);
+  ctx.beginPath();
+  ctx.moveTo(torsoPos.sx - 2.8 * s * facing, torsoPos.sy - 2.0 * s);
+  ctx.lineTo(torsoPos.sx - 3.6 * s * facing - armSwing, hipPos.sy + 0.4 * s);
+  ctx.stroke();
+
+  // Tailored torso / coat / safety vest polygon
+  const shW = 3.7 * s;
+  const waW = 2.8 * s;
+  ctx.fillStyle = jacketCol;
+  ctx.strokeStyle = mode === 'foreman' ? '#f59e0b' : 'rgba(15, 23, 42, 0.75)';
+  ctx.lineWidth = Math.max(0.7, 0.95 * s);
+  ctx.beginPath();
+  ctx.moveTo(torsoPos.sx - shW, torsoPos.sy - 3.0 * s);
+  ctx.lineTo(torsoPos.sx + shW, torsoPos.sy - 3.0 * s);
+  ctx.lineTo(hipPos.sx + waW, hipPos.sy + 0.8 * s);
+  ctx.lineTo(hipPos.sx - waW, hipPos.sy + 0.8 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Jacket details: executive white shirt + gold lapel/tie for Kuroda; reflective stripes for site builders; collar for lounge
+  if (mode === 'foreman') {
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath();
+    ctx.moveTo(torsoPos.sx - 1.2 * s, torsoPos.sy - 2.9 * s);
+    ctx.lineTo(torsoPos.sx + 1.2 * s, torsoPos.sy - 2.9 * s);
+    ctx.lineTo(torsoPos.sx + 0.2 * s * facing, torsoPos.sy + 1.2 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = Math.max(0.9, 1.3 * s);
+    ctx.beginPath();
+    ctx.moveTo(torsoPos.sx + 0.2 * s * facing, torsoPos.sy - 2.4 * s);
+    ctx.lineTo(torsoPos.sx + 0.2 * s * facing, torsoPos.sy + 1.8 * s);
+    ctx.stroke();
+  } else if (mode === 'working' || mode === 'waiting') {
+    ctx.strokeStyle = 'rgba(241, 245, 249, 0.85)';
+    ctx.lineWidth = Math.max(0.7, 1.0 * s);
+    ctx.beginPath();
+    ctx.moveTo(torsoPos.sx - 2.9 * s, torsoPos.sy + 0.2 * s);
+    ctx.lineTo(torsoPos.sx + 2.9 * s, torsoPos.sy + 0.2 * s);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = 'rgba(241, 245, 249, 0.85)';
+    ctx.beginPath();
+    ctx.arc(torsoPos.sx + 0.4 * s * facing, torsoPos.sy - 2.5 * s, 1.1 * s, 0, Math.PI);
+    ctx.fill();
+  }
+
+  // Front arm (work tool + sparks when working & paused; waving signal when waiting; walking swing otherwise)
+  if (mode === 'working' && !isWalking) {
+    const swing = reducedMotion ? 0.3 : Math.sin(t * 7.5 + phase) * 2.8 * s;
+    const handX = torsoPos.sx + 6.4 * s * facing;
+    const handY = torsoPos.sy - 2.0 * s + swing;
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = Math.max(1.2, 1.8 * s);
+    ctx.beginPath();
+    ctx.moveTo(torsoPos.sx + 2.8 * s * facing, torsoPos.sy - 1.8 * s);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+    ctx.fillStyle = skinCol;
+    ctx.beginPath();
+    ctx.arc(handX, handY, 1.0 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Local work sparks near tool tip
+    for (let k = 0; k < 3; k++) {
+      const sp = reducedMotion ? k * 0.3 : ((t * 1.9 + k * 0.33 + phase) % 1);
+      const sx = handX + (1.5 * facing + Math.cos(k * 2.2 + sp * 4) * 4.5 * sp) * s;
+      const sy = handY + (-1.5 - sp * 6.5 + Math.sin(k * 1.7) * 2.5) * s;
+      ctx.fillStyle = `rgba(254, 240, 138, ${(Math.sin(sp * Math.PI) * 0.95).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, Math.max(1, 1.4 * s), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (mode === 'waiting') {
+    const wave = reducedMotion ? 0 : Math.sin(t * 6 + phase) * 1.8 * s;
+    const handX = torsoPos.sx + 5.8 * s * facing;
+    const handY = headPos.sy - 2.2 * s + wave;
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = Math.max(1.2, 1.8 * s);
+    ctx.beginPath();
+    ctx.moveTo(torsoPos.sx + 2.6 * s * facing, torsoPos.sy - 1.6 * s);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+    ctx.fillStyle = skinCol;
+    ctx.beginPath();
+    ctx.arc(handX, handY, 1.0 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    const rp = reducedMotion ? 0.45 : (t * 1.6 + phase * 0.3) % 1;
+    ctx.strokeStyle = `rgba(251, 191, 36, ${((1 - rp) * 0.92).toFixed(3)})`;
+    ctx.lineWidth = Math.max(1.1, 1.6 * s);
+    ctx.beginPath();
+    ctx.arc(headPos.sx, headPos.sy - 8.5 * s, (4.2 + rp * 8.0) * s, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    const handX = torsoPos.sx + 3.4 * s * facing + armSwing;
+    const handY = hipPos.sy + 0.5 * s;
+    ctx.strokeStyle = mode === 'working' ? '#334155' : jacketCol;
+    ctx.lineWidth = Math.max(1.2, 1.8 * s);
+    ctx.beginPath();
+    ctx.moveTo(torsoPos.sx + 2.8 * s * facing, torsoPos.sy - 1.8 * s);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+    ctx.fillStyle = skinCol;
+    ctx.beginPath();
+    ctx.arc(handX, handY, 0.95 * s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Head (skin tone + subtle directional eye/feature hint)
+  ctx.fillStyle = skinCol;
+  ctx.beginPath();
+  ctx.arc(headPos.sx, headPos.sy, 2.8 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair or Hard-Hat
+  if (mode === 'working' || mode === 'waiting') {
+    ctx.fillStyle = mode === 'waiting' ? '#f97316' : '#facc15';
+    ctx.beginPath();
+    ctx.arc(headPos.sx, headPos.sy - 0.7 * s, 3.1 * s, Math.PI, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#fef08a';
+    ctx.lineWidth = Math.max(1, 1.3 * s);
+    ctx.beginPath();
+    ctx.moveTo(headPos.sx - 3.6 * s, headPos.sy - 0.7 * s);
+    ctx.lineTo(headPos.sx + 3.9 * s * facing, headPos.sy - 0.7 * s);
+    ctx.stroke();
+  } else if (mode === 'foreman') {
+    // Kuroda: executive swept silver-slate hair + gold foreman badge/visor band
+    ctx.fillStyle = '#94a3b8';
+    ctx.beginPath();
+    ctx.arc(headPos.sx - 0.3 * s * facing, headPos.sy - 0.7 * s, 2.9 * s, Math.PI * 0.92, Math.PI * 2.08);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(headPos.sx - 2.3 * s * facing, headPos.sy + 0.2 * s, 0.85 * s, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Deterministic hair style for lounge agents
+    ctx.fillStyle = hairCol;
+    ctx.beginPath();
+    ctx.arc(headPos.sx - 0.2 * s * facing, headPos.sy - 0.7 * s, 2.9 * s, Math.PI * 0.85, Math.PI * 2.12);
+    ctx.closePath();
+    ctx.fill();
+    if ((seed % 3) === 0) {
+      // Slightly longer bob sides
+      ctx.fillRect(headPos.sx - 2.8 * s, headPos.sy - 0.8 * s, 1.2 * s, 2.6 * s);
+      ctx.fillRect(headPos.sx + 1.6 * s, headPos.sy - 0.8 * s, 1.2 * s, 2.6 * s);
+    }
+  }
+
+  return headPos;
+}
+
+// Draw active working/waiting agents visibly stationed on a permanent building parcel
+export function drawSiteAgents3D(ctx, project, wx, wy, agents, time, reducedMotion, showBadges = true, agentMotion = null) {
+  if (!agents || agents.length === 0) return;
+  const assets = getCityAssets();
+  const count = Math.min(agents.length, 4);
+  for (let i = 0; i < count; i++) {
+    const ag = agents[i];
+    const mode = ag.status === 'waiting' ? 'waiting' : 'working';
+    const mot = agentMotion?.get(ag.id);
+    const offX = mot ? mot.x : -24 + (count === 1 ? 46 : i * 18);
+    const offY = mot ? mot.y : 39 - (i % 2) * 8;
+    const seed = hashString(ag.id || ag.name);
+    const phase = (seed % 628) / 100;
+    const headPos = drawAgentFigure3D(
+      ctx,
+      project,
+      wx + offX,
+      wy + offY,
+      2.4,
+      {
+        mode,
+        phase,
+        seed,
+        color: resolveAgentColor(ag, seed),
+        scale: 1.06,
+        isWalking: mot ? mot.isWalking : false,
+        walkCycle: mot ? mot.walkPhase : 0,
+        facing: mot ? mot.facing : 1,
+      },
+      time,
+      reducedMotion,
+      assets
+    );
+    if (showBadges && headPos && headPos.scale >= 0.42) {
+      const rolePart = ag.specialtyLabel || ag.role || '';
+      const suffix = rolePart ? ` · ${rolePart}` : ag.task ? ` · ${ag.task}` : '';
+      const accent = resolveAgentColor(ag, seed);
+      drawCompactTag(
+        ctx,
+        headPos.sx,
+        headPos.sy - 17 * headPos.scale,
+        `${ag.name || 'Agent'}${suffix}`,
+        accent,
+        'rgba(12, 18, 30, 0.92)',
+        Math.min(1.05, headPos.scale * 0.95),
+        0.96
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hoofdkantoor (HQ) at Grid (0,0) — Tokyo Glass-and-Steel Landmark + Cutaway Interior
+// ---------------------------------------------------------------------------
+export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, reducedMotion, outHitboxes) {
+  const assets = getCityAssets();
+  const t = reducedMotion ? 0 : time;
+  const cutaway = Math.max(0, Math.min(1, state.cutaway || 0));
+  const selectedKind = state.selected?.kind || state.selected?.type || null;
+  const selectedId = state.selected?.id || null;
+  const hoveredKind = state.hovered?.kind || state.hovered?.type || null;
+  const hoveredId = state.hovered?.id || null;
+
+  const baseCenter = project(wx, wy, 0);
+  const s = baseCenter.scale;
+  if (s <= 0.04) return;
+
+  const hqId = hqData?.id || 'hq-central';
+  const foreman = hqData?.foreman || {
+    id: 'foreman-uitvoerder',
+    name: 'Kuroda',
+    role: 'Uitvoerder',
+    status: 'online',
+  };
+  const roster = Array.isArray(hqData?.roster) ? hqData.roster : [];
+  const sleepAgents = [];
+  const loungeAgents = [];
+  for (let i = 0; i < roster.length; i++) {
+    const a = roster[i];
+    if (
+      a.location === 'hq' ||
+      a.zone === 'sleep_pods' ||
+      a.zone === 'lounge' ||
+      a.zone === 'war_room' ||
+      a.zone === 'lab'
+    ) {
+      if (a.zone === 'sleep_pods' || a.status === 'sleeping') sleepAgents.push(a);
+      else loungeAgents.push(a);
+    }
+  }
+
+  const hx = 47;
+  const hy = 43;
+  const ihx = 150;
+  const ihy = 110;
+  const wallH = 88;
+  const floorZ = 5.5;
+
+  // 1. Grounded Dusk Shadow & Exterior Plaza Pad (fades out completely in exclusive HQ RPG mode)
+  if (cutaway < 0.72) {
+    ctx.save();
+    ctx.globalAlpha *= Math.max(0, 1 - cutaway * 1.45);
+    drawDuskShadow(ctx, project, wx, wy, hx, hy, wallH * (1 - cutaway * 0.65));
+    const isHqSel = selectedKind === 'hq';
+    const isHqHov = hoveredKind === 'hq';
+    fillQuad(
+      ctx,
+      project(wx - 55, wy - 55, 2.0),
+      project(wx + 55, wy - 55, 2.0),
+      project(wx + 55, wy + 55, 2.0),
+      project(wx - 55, wy + 55, 2.0),
+      '#1e2736',
+      isHqSel ? '#38bdf8' : isHqHov ? '#e2e8f0' : 'rgba(56, 189, 248, 0.48)',
+      Math.max(1.2, (isHqSel ? 2.6 : 1.5) * Math.min(2.5, s))
+    );
+    ctx.restore();
+  }
+
+  // Granite Podium Base (expands cleanly with interior studio floorplate when cutaway opens)
+  const podHx = cutaway > 0.25 ? ihx + 4 : hx + 2;
+  const podHy = cutaway > 0.25 ? ihy + 4 : hy + 2;
+  drawExtrudedBox3D(
+    ctx,
+    project,
+    wx,
+    wy,
+    podHx,
+    podHy,
+    2.0,
+    floorZ,
+    { south: '#253143', north: '#172030', east: '#1f2a3c', west: '#141c2a', top: '#1a2436' },
+    'rgba(56, 189, 248, 0.36)'
+  );
+
+  // 2. Spacious 5-Wing 3D Perspective RPG Office Interior (300 x 220 units with wide open atrium)
+  if (cutaway > 0.04) {
+    ctx.save();
+    ctx.globalAlpha *= Math.min(1, cutaway * 1.4);
+    const uiS = Math.min(3.2, Math.max(0.85, s * 0.52));
+
+    // Base dark architectural tiled atrium & corridor floor
+    fillQuad(
+      ctx,
+      project(wx - ihx + 2, wy - ihy + 2, floorZ + 0.2),
+      project(wx + ihx - 2, wy - ihy + 2, floorZ + 0.2),
+      project(wx + ihx - 2, wy + ihy - 2, floorZ + 0.2),
+      project(wx - ihx + 2, wy + ihy - 2, floorZ + 0.2),
+      '#131c2b',
+      'rgba(148, 163, 184, 0.32)',
+      1.2
+    );
+
+    // Architectural tiled floor grid across spacious atrium & corridors
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.075)';
+    ctx.lineWidth = Math.max(0.5, 0.7 * uiS);
+    for (let g = -140; g <= 140; g += 20) {
+      const a = project(wx + g, wy - ihy + 3, floorZ + 0.25);
+      const b = project(wx + g, wy + ihy - 3, floorZ + 0.25);
+      ctx.beginPath();
+      ctx.moveTo(a.sx, a.sy);
+      ctx.lineTo(b.sx, b.sy);
+      ctx.stroke();
+    }
+    for (let g = -100; g <= 100; g += 20) {
+      const a = project(wx - ihx + 3, wy + g, floorZ + 0.25);
+      const b = project(wx + ihx - 3, wy + g, floorZ + 0.25);
+      ctx.beginPath();
+      ctx.moveTo(a.sx, a.sy);
+      ctx.lineTo(b.sx, b.sy);
+      ctx.stroke();
+    }
+
+    // Subtle glowing central atrium medallion at (0, -2)
+    const atrC = project(wx, wy - 2, floorZ + 0.35);
+    stampSprite(ctx, assets.glowCyan, atrC.sx, atrC.sy, 32 * uiS, 20 * uiS, 0.16, true);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.24)';
+    ctx.lineWidth = Math.max(1, 1.3 * uiS);
+    ctx.beginPath();
+    ctx.ellipse(atrC.sx, atrC.sy, 16 * uiS, 10 * uiS, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Back architectural walls (North, West & East cutaway walls)
+    const backWallH = floorZ + 28;
+    fillQuad(
+      ctx,
+      project(wx - ihx + 2, wy - ihy + 2, floorZ),
+      project(wx + ihx - 2, wy - ihy + 2, floorZ),
+      project(wx + ihx - 2, wy - ihy + 2, backWallH),
+      project(wx - ihx + 2, wy - ihy + 2, backWallH),
+      '#1b2537',
+      'rgba(148, 163, 184, 0.30)',
+      1.1
+    );
+    fillQuad(
+      ctx,
+      project(wx - ihx + 2, wy - ihy + 2, floorZ),
+      project(wx - ihx + 2, wy + ihy - 2, floorZ),
+      project(wx - ihx + 2, wy + ihy - 2, backWallH * 0.72),
+      project(wx - ihx + 2, wy - ihy + 2, backWallH),
+      '#151e2e',
+      'rgba(148, 163, 184, 0.24)',
+      1.0
+    );
+    fillQuad(
+      ctx,
+      project(wx + ihx - 2, wy - ihy + 2, floorZ),
+      project(wx + ihx - 2, wy + ihy - 2, floorZ),
+      project(wx + ihx - 2, wy + ihy - 2, backWallH * 0.72),
+      project(wx + ihx - 2, wy - ihy + 2, backWallH),
+      '#162032',
+      'rgba(148, 163, 184, 0.24)',
+      1.0
+    );
+    // Warm architectural wood wainscot strip along North wall
+    fillQuad(
+      ctx,
+      project(wx - ihx + 2, wy - ihy + 2.2, floorZ),
+      project(wx + ihx - 2, wy - ihy + 2.2, floorZ),
+      project(wx + ihx - 2, wy - ihy + 2.2, floorZ + 8),
+      project(wx - ihx + 2, wy - ihy + 2.2, floorZ + 8),
+      '#463122'
+    );
+
+    // =========================================================================
+    // WING 1: Engineering & War Room (North-West: x -144..-16, y -104..-26)
+    // =========================================================================
+    const isWarHov = hoveredKind === 'hq_zone' && hoveredId === 'hq-zone-war-room';
+    const isWarSel = selectedKind === 'hq_zone' && selectedId === 'hq-zone-war-room';
+    fillQuad(
+      ctx,
+      project(wx - 144, wy - 104, floorZ + 0.35),
+      project(wx - 16, wy - 104, floorZ + 0.35),
+      project(wx - 16, wy - 26, floorZ + 0.35),
+      project(wx - 144, wy - 26, floorZ + 0.35),
+      isWarHov ? 'rgba(34, 48, 84, 0.92)' : 'rgba(22, 33, 58, 0.88)',
+      isWarSel ? '#38bdf8' : isWarHov ? '#93c5fd' : 'rgba(56, 189, 248, 0.44)',
+      Math.max(1.1, (isWarHov || isWarSel ? 2.2 : 1.1) * uiS)
+    );
+
+    // Wall-mounted Holo City-Status Display (hq_holo) on War Room North Wall
+    const isHoloSel = selectedKind === 'hq_holo';
+    const isHoloHov = hoveredKind === 'hq_holo';
+    const holoZ0 = floorZ + 10;
+    const holoZ1 = floorZ + 25.5;
+    const holoCenter = project(wx - 80, wy - ihy + 2.8, (holoZ0 + holoZ1) * 0.5);
+    stampSprite(ctx, assets.glowCyan, holoCenter.sx, holoCenter.sy, 38 * uiS, 18 * uiS, isHoloHov ? 0.74 : 0.46, true);
+    fillQuad(
+      ctx,
+      project(wx - 108, wy - ihy + 2.6, holoZ0),
+      project(wx - 52, wy - ihy + 2.6, holoZ0),
+      project(wx - 52, wy - ihy + 2.6, holoZ1),
+      project(wx - 108, wy - ihy + 2.6, holoZ1),
+      'rgba(8, 22, 38, 0.96)',
+      isHoloSel ? '#38bdf8' : isHoloHov ? '#e0f2fe' : 'rgba(56, 189, 248, 0.88)',
+      Math.max(1.3, (isHoloHov || isHoloSel ? 2.4 : 1.4) * uiS)
+    );
+    const barHeights = [6.0, 9.8, 7.6, 11.8, 8.6, 5.8, 10.4, 7.8, 9.2, 6.6];
+    for (let bi = 0; bi < barHeights.length; bi++) {
+      const bx0 = wx - 102 + bi * 4.8;
+      const bh = barHeights[bi] * (0.85 + 0.15 * Math.sin(t * 2.2 + bi));
+      fillQuad(
+        ctx,
+        project(bx0, wy - ihy + 3.0, holoZ0 + 1.5),
+        project(bx0 + 3.0, wy - ihy + 3.0, holoZ0 + 1.5),
+        project(bx0 + 3.0, wy - ihy + 3.0, holoZ0 + 1.5 + bh),
+        project(bx0, wy - ihy + 3.0, holoZ0 + 1.5 + bh),
+        bi % 2 === 0 ? 'rgba(56, 189, 248, 0.88)' : 'rgba(52, 211, 153, 0.88)'
+      );
+    }
+    if (outHitboxes && cutaway > 0.35) {
+      outHitboxes.push({
+        type: 'hq_holo',
+        kind: 'hq_holo',
+        id: 'hq-holo-display',
+        label: 'Stadsstatus Holo-Display',
+        depth: holoCenter.depth - 55,
+        sx: holoCenter.sx,
+        topY: holoCenter.sy - 18 * uiS,
+        botY: holoCenter.sy + 18 * uiS,
+        rx: 34 * uiS,
+      });
+    }
+
+    // 3 Spaced Backend / Frontend Engineering Workstations in War Room
+    for (const wsX of [wx - 118, wx - 80, wx - 42]) {
+      drawExtrudedBox3D(
+        ctx,
+        project,
+        wsX,
+        wy - 62,
+        13,
+        6.5,
+        floorZ + 0.4,
+        floorZ + 8.2,
+        { south: '#25334a', north: '#162033', east: '#1e2b40', west: '#131b2c', top: '#31435e' },
+        'rgba(56, 189, 248, 0.46)'
+      );
+      fillQuad(
+        ctx,
+        project(wsX - 9.5, wy - 64.5, floorZ + 8.6),
+        project(wsX + 9.5, wy - 64.5, floorZ + 8.6),
+        project(wsX + 9.5, wy - 64.5, floorZ + 13.8),
+        project(wsX - 9.5, wy - 64.5, floorZ + 13.8),
+        'rgba(56, 189, 248, 0.80)',
+        '#bae6fd',
+        0.8
+      );
+    }
+
+    if (outHitboxes && cutaway > 0.35) {
+      const wrC = project(wx - 80, wy - 65, floorZ + 4);
+      outHitboxes.push({
+        type: 'hq_zone',
+        kind: 'hq_zone',
+        zone: 'war_room',
+        id: 'hq-zone-war-room',
+        label: 'Engineering & War Room',
+        depth: wrC.depth - 20,
+        sx: wrC.sx,
+        topY: wrC.sy - 34 * uiS,
+        botY: wrC.sy + 32 * uiS,
+        rx: 62 * uiS,
+      });
+    }
+
+    // =========================================================================
+    // WING 2: Cybersecurity SOC & DevOps/QA Lab (North-East: x 16..144, y -104..-26)
+    // =========================================================================
+    const isLabHov = hoveredKind === 'hq_zone' && hoveredId === 'hq-zone-lab';
+    const isLabSel = selectedKind === 'hq_zone' && selectedId === 'hq-zone-lab';
+    fillQuad(
+      ctx,
+      project(wx + 16, wy - 104, floorZ + 0.35),
+      project(wx + 144, wy - 104, floorZ + 0.35),
+      project(wx + 144, wy - 26, floorZ + 0.35),
+      project(wx + 16, wy - 26, floorZ + 0.35),
+      isLabHov ? 'rgba(20, 52, 64, 0.92)' : 'rgba(15, 36, 46, 0.88)',
+      isLabSel ? '#2dd4bf' : isLabHov ? '#5eead4' : 'rgba(45, 212, 191, 0.44)',
+      Math.max(1.1, (isLabHov || isLabSel ? 2.2 : 1.1) * uiS)
+    );
+
+    // 4 Spaciously Arranged Glowing LED Server Racks along North Wall
+    for (let ri = 0; ri < 4; ri++) {
+      const rx = wx + 38 + ri * 28;
+      drawExtrudedBox3D(
+        ctx,
+        project,
+        rx,
+        wy - 92,
+        7.5,
+        6.5,
+        floorZ + 0.4,
+        floorZ + 18.5,
+        { south: '#1e293b', north: '#0f172a', east: '#172033', west: '#0d1526', top: '#334155' },
+        'rgba(45, 212, 191, 0.44)'
+      );
+      for (let li = 0; li < 3; li++) {
+        const lp = project(rx - 3.2 + li * 3.2, wy - 85.2, floorZ + 14.5 - (ri % 2) * 2.5);
+        const blink = reducedMotion ? 1 : Math.sin(t * 4.2 + ri * 1.7 + li * 2.1) > -0.2 ? 1 : 0.25;
+        ctx.fillStyle =
+          li === 0
+            ? `rgba(52, 211, 153, ${blink})`
+            : li === 1
+              ? `rgba(248, 113, 113, ${blink})`
+              : `rgba(56, 189, 248, ${blink})`;
+        ctx.beginPath();
+        ctx.arc(lp.sx, lp.sy, Math.max(1.2, 1.5 * uiS), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // 2 Spaced Cybersecurity SOC & QA Diagnostic Consoles
+    for (let ci = 0; ci < 2; ci++) {
+      const cx = wx + (ci === 0 ? 54 : 104);
+      const screenCol = ci === 0 ? 'rgba(248, 113, 113, 0.78)' : 'rgba(45, 212, 191, 0.80)';
+      const borderCol = ci === 0 ? 'rgba(248, 113, 113, 0.55)' : 'rgba(45, 212, 191, 0.55)';
+      drawExtrudedBox3D(
+        ctx,
+        project,
+        cx,
+        wy - 56,
+        16,
+        6.8,
+        floorZ + 0.4,
+        floorZ + 8.4,
+        { south: '#163840', north: '#0e242a', east: '#122f36', west: '#0b1e24', top: '#1e4d57' },
+        borderCol
+      );
+      fillQuad(
+        ctx,
+        project(cx - 11, wy - 58.8, floorZ + 8.8),
+        project(cx + 11, wy - 58.8, floorZ + 8.8),
+        project(cx + 11, wy - 58.8, floorZ + 14.2),
+        project(cx - 11, wy - 58.8, floorZ + 14.2),
+        screenCol,
+        '#e2e8f0',
+        0.85
+      );
+    }
+    const labGlow = project(wx + 80, wy - 56, floorZ + 11);
+    stampSprite(ctx, assets.glowEmerald, labGlow.sx, labGlow.sy, 32 * uiS, 16 * uiS, 0.36, true);
+
+    if (outHitboxes && cutaway > 0.35) {
+      const lbC = project(wx + 80, wy - 65, floorZ + 4);
+      outHitboxes.push({
+        type: 'hq_zone',
+        kind: 'hq_zone',
+        zone: 'lab',
+        id: 'hq-zone-lab',
+        label: 'Security SOC & QA Lab',
+        depth: lbC.depth - 20,
+        sx: lbC.sx,
+        topY: lbC.sy - 34 * uiS,
+        botY: lbC.sy + 32 * uiS,
+        rx: 62 * uiS,
+      });
+    }
+
+    // =========================================================================
+    // WING 3: Slaapcapsules (West Wing: x -144..-54, y -14..100)
+    // =========================================================================
+    const isSleepZoneHov = hoveredKind === 'hq_zone' && hoveredId === 'hq-zone-sleep-pods';
+    const isSleepZoneSel = selectedKind === 'hq_zone' && selectedId === 'hq-zone-sleep-pods';
+    fillQuad(
+      ctx,
+      project(wx - 144, wy - 14, floorZ + 0.35),
+      project(wx - 54, wy - 14, floorZ + 0.35),
+      project(wx - 54, wy + 100, floorZ + 0.35),
+      project(wx - 144, wy + 100, floorZ + 0.35),
+      isSleepZoneHov ? 'rgba(38, 52, 86, 0.92)' : 'rgba(24, 34, 58, 0.88)',
+      isSleepZoneSel ? '#818cf8' : isSleepZoneHov ? '#a5b4fc' : 'rgba(129, 140, 248, 0.44)',
+      Math.max(1.1, (isSleepZoneHov || isSleepZoneSel ? 2.2 : 1.1) * uiS)
+    );
+
+    // 6 Generous Glowing Sleep Pods with Wide Central Walkway
+    const podSlots = [
+      { x: wx - 124, y: wy + 8 },
+      { x: wx - 74, y: wy + 8 },
+      { x: wx - 124, y: wy + 44 },
+      { x: wx - 74, y: wy + 44 },
+      { x: wx - 124, y: wy + 80 },
+      { x: wx - 74, y: wy + 80 },
+    ];
+    for (let i = 0; i < podSlots.length; i++) {
+      const ps = podSlots[i];
+      drawExtrudedBox3D(
+        ctx,
+        project,
+        ps.x,
+        ps.y,
+        11.5,
+        8.2,
+        floorZ + 0.4,
+        floorZ + 7.8,
+        { south: '#25334e', north: '#162036', east: '#1e2b44', west: '#131c30', top: '#2e3f60' },
+        'rgba(129, 140, 248, 0.45)'
+      );
+      fillQuad(
+        ctx,
+        project(ps.x - 8.8, ps.y - 5.8, floorZ + 8.0),
+        project(ps.x + 8.8, ps.y - 5.8, floorZ + 8.0),
+        project(ps.x + 8.8, ps.y + 5.8, floorZ + 8.0),
+        project(ps.x - 8.8, ps.y + 5.8, floorZ + 8.0),
+        '#192944',
+        'rgba(56, 189, 248, 0.56)',
+        0.95
+      );
+      const podGlow = project(ps.x, ps.y, floorZ + 8.2);
+      stampSprite(ctx, assets.glowCyan, podGlow.sx, podGlow.sy, 13 * uiS, 8 * uiS, 0.22, true);
+    }
+
+    if (outHitboxes && cutaway > 0.35) {
+      const spC = project(wx - 99, wy + 44, floorZ + 4);
+      outHitboxes.push({
+        type: 'hq_zone',
+        kind: 'hq_zone',
+        zone: 'sleep_pods',
+        id: 'hq-zone-sleep-pods',
+        label: 'Slaapcapsules',
+        depth: spC.depth - 20,
+        sx: spC.sx,
+        topY: spC.sy - 48 * uiS,
+        botY: spC.sy + 44 * uiS,
+        rx: 46 * uiS,
+      });
+    }
+
+    // =========================================================================
+    // WING 4: UI Design Studio & Lounge (East Wing: x 54..144, y -14..100)
+    // =========================================================================
+    const isLoungeZoneHov = hoveredKind === 'hq_zone' && hoveredId === 'hq-zone-lounge';
+    const isLoungeZoneSel = selectedKind === 'hq_zone' && selectedId === 'hq-zone-lounge';
+    fillQuad(
+      ctx,
+      project(wx + 54, wy - 14, floorZ + 0.35),
+      project(wx + 144, wy - 14, floorZ + 0.35),
+      project(wx + 144, wy + 100, floorZ + 0.35),
+      project(wx + 54, wy + 100, floorZ + 0.35),
+      isLoungeZoneHov ? 'rgba(68, 52, 38, 0.92)' : 'rgba(52, 39, 29, 0.88)',
+      isLoungeZoneSel ? '#f472b6' : isLoungeZoneHov ? '#f9a8d4' : 'rgba(52, 211, 153, 0.44)',
+      Math.max(1.1, (isLoungeZoneHov || isLoungeZoneSel ? 2.2 : 1.1) * uiS)
+    );
+    ctx.strokeStyle = 'rgba(253, 230, 138, 0.08)';
+    ctx.lineWidth = Math.max(0.5, 0.7 * uiS);
+    for (let wyLine = -4; wyLine <= 92; wyLine += 10) {
+      const p0 = project(wx + 56, wy + wyLine, floorZ + 0.4);
+      const p1 = project(wx + 142, wy + wyLine, floorZ + 0.4);
+      ctx.beginPath();
+      ctx.moveTo(p0.sx, p0.sy);
+      ctx.lineTo(p1.sx, p1.sy);
+      ctx.stroke();
+    }
+
+    // Coffee Bar Counter
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx + 99,
+      wy,
+      24,
+      6.0,
+      floorZ + 0.4,
+      floorZ + 8.0,
+      { south: '#3b281d', north: '#261912', east: '#2e1f17', west: '#211610', top: '#8c6244' },
+      'rgba(253, 230, 138, 0.34)'
+    );
+    const cofGlow = project(wx + 105, wy, floorZ + 10);
+    stampSprite(ctx, assets.glowTungsten, cofGlow.sx, cofGlow.sy, 18 * uiS, 11 * uiS, 0.56, true);
+
+    // Cozy Emerald Sofas + Spacious Meeting/Design Table
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx + 128,
+      wy + 44,
+      6.5,
+      20,
+      floorZ + 0.4,
+      floorZ + 6.5,
+      { south: '#145345', north: '#0c362d', east: '#104439', west: '#0b3028', top: '#1d6f5c' },
+      'rgba(110, 231, 183, 0.36)'
+    );
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx + 96,
+      wy + 82,
+      20,
+      6.5,
+      floorZ + 0.4,
+      floorZ + 6.5,
+      { south: '#145345', north: '#0c362d', east: '#104439', west: '#0b3028', top: '#1d6f5c' },
+      'rgba(110, 231, 183, 0.36)'
+    );
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx + 94,
+      wy + 44,
+      13,
+      9.5,
+      floorZ + 0.4,
+      floorZ + 4.8,
+      { south: '#6b4730', north: '#472d1d', east: '#593a26', west: '#3d2618', top: '#946642' }
+    );
+
+    // 3 Indoor Bonsai / Sakura Planters
+    for (const bp of [
+      { x: wx + 66, y: wy },
+      { x: wx + 134, y: wy + 88 },
+      { x: wx + 64, y: wy + 86 },
+    ]) {
+      drawExtrudedBox3D(
+        ctx,
+        project,
+        bp.x,
+        bp.y,
+        4.5,
+        4.5,
+        floorZ + 0.4,
+        floorZ + 4.8,
+        { south: '#475569', north: '#334155', east: '#3e4c5e', west: '#2a3545', top: '#3f2e21' }
+      );
+      const bTop = project(bp.x, bp.y, floorZ + 11.5);
+      ctx.fillStyle = '#34d399';
+      ctx.beginPath();
+      ctx.ellipse(bTop.sx, bTop.sy, 6.0 * uiS, 4.2 * uiS, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#f9a8d4';
+      ctx.beginPath();
+      ctx.ellipse(bTop.sx + 2.2 * uiS, bTop.sy - 1.6 * uiS, 3.0 * uiS, 2.2 * uiS, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const loungeGlow = project(wx + 96, wy + 44, floorZ + 8);
+    stampSprite(ctx, assets.glowEmerald, loungeGlow.sx, loungeGlow.sy, 32 * uiS, 20 * uiS, 0.26, true);
+
+    if (outHitboxes && cutaway > 0.35) {
+      const lgC = project(wx + 99, wy + 44, floorZ + 4);
+      outHitboxes.push({
+        type: 'hq_zone',
+        kind: 'hq_zone',
+        zone: 'lounge',
+        id: 'hq-zone-lounge',
+        label: 'UI Studio & Lounge',
+        depth: lgC.depth - 20,
+        sx: lgC.sx,
+        topY: lgC.sy - 48 * uiS,
+        botY: lgC.sy + 44 * uiS,
+        rx: 46 * uiS,
+      });
+    }
+
+    // =========================================================================
+    // WING 5: Directie & Commandocentrum (South-Center: x -44..44, y 24..104)
+    // =========================================================================
+    const isForemanSel = selectedKind === 'foreman';
+    const isForemanHov = hoveredKind === 'foreman';
+    const isCmdZoneHov = hoveredKind === 'hq_zone' && hoveredId === 'hq-zone-command';
+    const isCmdZoneSel = selectedKind === 'hq_zone' && selectedId === 'hq-zone-command';
+    fillQuad(
+      ctx,
+      project(wx - 44, wy + 24, floorZ + 0.35),
+      project(wx + 44, wy + 24, floorZ + 0.35),
+      project(wx + 44, wy + 104, floorZ + 0.35),
+      project(wx - 44, wy + 104, floorZ + 0.35),
+      isForemanHov || isCmdZoneHov ? 'rgba(66, 46, 18, 0.76)' : 'rgba(44, 31, 14, 0.66)',
+      isForemanSel || isCmdZoneSel ? '#38bdf8' : isForemanHov || isCmdZoneHov ? '#fde68a' : 'rgba(251, 191, 36, 0.58)',
+      Math.max(1.1, (isForemanHov || isForemanSel || isCmdZoneHov ? 2.2 : 1.1) * uiS)
+    );
+
+    // Kuroda's Executive Command Desk + Dual Monitors
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx - 12,
+      wy + 48,
+      18,
+      7.2,
+      floorZ + 0.4,
+      floorZ + 9.0,
+      { south: '#784824', north: '#4d2d16', east: '#61391c', west: '#422612', top: '#4a301a' },
+      '#f59e0b'
+    );
+    const monGlow = project(wx - 12, wy + 46, floorZ + 12.2);
+    stampSprite(ctx, assets.glowGold, monGlow.sx, monGlow.sy, 30 * uiS, 18 * uiS, 0.52, true);
+    fillQuad(
+      ctx,
+      project(wx - 23, wy + 45, floorZ + 9.4),
+      project(wx - 13, wy + 45, floorZ + 9.4),
+      project(wx - 13, wy + 45, floorZ + 14.8),
+      project(wx - 23, wy + 45, floorZ + 14.8),
+      'rgba(251, 191, 36, 0.88)',
+      '#fef3c7',
+      0.9
+    );
+    fillQuad(
+      ctx,
+      project(wx - 10, wy + 45, floorZ + 9.4),
+      project(wx, wy + 45, floorZ + 9.4),
+      project(wx, wy + 45, floorZ + 14.8),
+      project(wx - 10, wy + 45, floorZ + 14.8),
+      'rgba(56, 189, 248, 0.84)',
+      '#e0f2fe',
+      0.9
+    );
+
+    // Teamleider / Projectmanager Meeting & Blueprint Table
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx + 24,
+      wy + 52,
+      12,
+      8.5,
+      floorZ + 0.4,
+      floorZ + 7.2,
+      { south: '#334155', north: '#1e293b', east: '#283548', west: '#182130', top: '#1e3a5f' },
+      'rgba(167, 139, 250, 0.58)'
+    );
+    fillQuad(
+      ctx,
+      project(wx + 15, wy + 46, floorZ + 7.5),
+      project(wx + 33, wy + 46, floorZ + 7.5),
+      project(wx + 33, wy + 58, floorZ + 7.5),
+      project(wx + 15, wy + 58, floorZ + 7.5),
+      'rgba(14, 116, 144, 0.82)',
+      'rgba(186, 230, 253, 0.72)',
+      0.75
+    );
+
+    // Wide Entrance Hall & Welcome Doormat at South Center Wall
+    fillQuad(
+      ctx,
+      project(wx - 16, wy + 95, floorZ + 0.45),
+      project(wx + 16, wy + 95, floorZ + 0.45),
+      project(wx + 16, wy + 102.5, floorZ + 0.45),
+      project(wx - 16, wy + 102.5, floorZ + 0.45),
+      '#1e293b',
+      'rgba(56, 189, 248, 0.75)',
+      1.3
+    );
+
+    if (outHitboxes && cutaway > 0.35) {
+      const cmC = project(wx, wy + 64, floorZ + 4);
+      outHitboxes.push({
+        type: 'hq_zone',
+        kind: 'hq_zone',
+        zone: 'command',
+        id: 'hq-zone-command',
+        label: 'Directie & Commandocentrum',
+        depth: cmC.depth - 18,
+        sx: cmC.sx,
+        topY: cmC.sy - 34 * uiS,
+        botY: cmC.sy + 34 * uiS,
+        rx: 46 * uiS,
+      });
+    }
+
+    // Room floor captions cleanly positioned at bottom edge of each wing
+    if (cutaway > 0.45 && s >= 1.2) {
+      const lblFont = `700 ${Math.max(9.5, Math.min(13, Math.round(1.6 * s + 4.5)))}px ${FONT_MONO}`;
+      ctx.font = lblFont;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const drawRoomLbl = (lx, ly, text, col) => {
+        const p = project(wx + lx, wy + ly, floorZ + 0.6);
+        ctx.fillStyle = col;
+        ctx.fillText(text, p.sx, p.sy);
+      };
+      drawRoomLbl(-80, -31, 'ENGINEERING · WAR ROOM', 'rgba(125, 211, 252, 0.88)');
+      drawRoomLbl(80, -31, 'SECURITY SOC · QA LAB', 'rgba(94, 234, 212, 0.88)');
+      drawRoomLbl(-99, 95, 'SLAAPCAPSULES', 'rgba(165, 180, 252, 0.88)');
+      drawRoomLbl(99, 95, 'UI STUDIO · LOUNGE', 'rgba(249, 168, 212, 0.88)');
+      drawRoomLbl(0, 90, 'DIRECTIE · COMMANDO', 'rgba(253, 230, 138, 0.90)');
+    }
+
+    // --- Subtle Glowing RPG Director/Player Foot-Ring on HQ Floor ---
+    if (cutaway > 0.35 && state.rpg) {
+      const rp = project(wx + state.rpg.x, wy + state.rpg.y, floorZ + 0.55);
+      const rs = Math.min(3.0, Math.max(1.2, rp.scale * 0.52));
+      const pulse = reducedMotion ? 0.85 : 0.65 + 0.35 * Math.sin(t * 3.4);
+      stampSprite(ctx, assets.glowCyan, rp.sx, rp.sy, 14 * rs, 9 * rs, 0.42 * pulse, true);
+      ctx.strokeStyle = `rgba(56, 189, 248, ${(0.74 * pulse).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1.4, 1.8 * rs);
+      ctx.beginPath();
+      ctx.ellipse(rp.sx, rp.sy, 7.8 * rs, 4.8 * rs, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#e0f2fe';
+      ctx.beginPath();
+      ctx.arc(rp.sx, rp.sy, Math.max(1.8, 2.2 * rs), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // --- Interior Agents + Uitvoerder (sorted back-to-front by projected depth) ---
+    const interiorEntities = [];
+    const motionMap = state.agentMotion || null;
+
+    const foremanId = foreman.id || 'foreman-uitvoerder';
+    const fMot = motionMap?.get(foremanId);
+    const foremanX = fMot ? wx + fMot.x : wx - 12;
+    const foremanY = fMot ? wy + fMot.y : wy + 62;
+    interiorEntities.push({
+      kind: 'foreman',
+      id: foremanId,
+      data: foreman,
+      wx: foremanX,
+      wy: foremanY,
+      wz: floorZ + 0.5,
+      mode: 'foreman',
+      color: '#fbbf24',
+      isWalking: fMot ? fMot.isWalking : false,
+      walkCycle: fMot ? fMot.walkPhase : 0,
+      facing: fMot ? fMot.facing : 1,
+      label: `${foreman.role || 'Uitvoerder'} · ${foreman.name || 'Kuroda'}`,
+      accent: '#fbbf24',
+      prio: 3,
+      depth: project(foremanX, foremanY, floorZ + 8).depth,
+    });
+
+    for (let i = 0; i < sleepAgents.length; i++) {
+      const ag = sleepAgents[i];
+      const slot = podSlots[i % podSlots.length];
+      const rowOff = i >= podSlots.length ? 3.5 : 0;
+      const ax = slot.x + rowOff;
+      const ay = slot.y;
+      const agSeed = hashString(ag.id || ag.name);
+      const agCol = resolveAgentColor(ag, agSeed);
+      interiorEntities.push({
+        kind: 'agent',
+        id: ag.id,
+        data: ag,
+        wx: ax,
+        wy: ay,
+        wz: floorZ + 7.8,
+        mode: 'sleeping',
+        color: agCol,
+        isWalking: false,
+        walkCycle: 0,
+        facing: 1,
+        label: `${ag.name || 'Agent'} · ${ag.specialtyLabel || 'Slaapt'}`,
+        accent: agCol,
+        prio: 1,
+        depth: project(ax, ay, floorZ + 8).depth,
+      });
+    }
+
+    const roamFallbackSlots = [
+      { x: wx + 84, y: wy + 20 },
+      { x: wx + 108, y: wy + 62 },
+      { x: wx - 82, y: wy - 44 },
+      { x: wx + 78, y: wy - 42 },
+      { x: wx, y: wy - 2 },
+    ];
+    for (let i = 0; i < loungeAgents.length; i++) {
+      const ag = loungeAgents[i];
+      const lMot = motionMap?.get(ag.id);
+      const slot = roamFallbackSlots[i % roamFallbackSlots.length];
+      const ax = lMot ? wx + lMot.x : slot.x + (i >= roamFallbackSlots.length ? 8 : 0);
+      const ay = lMot ? wy + lMot.y : slot.y;
+      const agSeed = hashString(ag.id || ag.name);
+      const agCol = resolveAgentColor(ag, agSeed);
+      interiorEntities.push({
+        kind: 'agent',
+        id: ag.id,
+        data: ag,
+        wx: ax,
+        wy: ay,
+        wz: floorZ + 0.5,
+        mode: 'lounge',
+        color: agCol,
+        isWalking: lMot ? lMot.isWalking : false,
+        walkCycle: lMot ? lMot.walkPhase : 0,
+        facing: lMot ? lMot.facing : 1,
+        label: `${ag.name || 'Agent'} · ${ag.specialtyLabel || ag.role || 'Standby'}`,
+        accent: agCol,
+        prio: 2,
+        depth: project(ax, ay, floorZ + 8).depth,
+      });
+    }
+
+    interiorEntities.sort((a, b) => b.depth - a.depth);
+
+    const tagDraws = [];
+    const figBaseScale = Math.max(0.48, Math.min(1.18, 4.4 / Math.max(1, s)));
+    for (let i = 0; i < interiorEntities.length; i++) {
+      const ent = interiorEntities[i];
+      const isSel = selectedKind === ent.kind && selectedId === ent.id;
+      const isHov = hoveredKind === ent.kind && hoveredId === ent.id;
+      const entSeed = hashString(ent.id);
+      const headPos = drawAgentFigure3D(
+        ctx,
+        project,
+        ent.wx,
+        ent.wy,
+        ent.wz,
+        {
+          mode: ent.mode,
+          phase: (entSeed % 628) / 100,
+          seed: entSeed,
+          color: ent.color,
+          scale: figBaseScale * (ent.kind === 'foreman' ? 1.15 : 1.0),
+          selected: isSel,
+          hovered: isHov,
+          isWalking: ent.isWalking,
+          walkCycle: ent.walkCycle,
+          facing: ent.facing,
+        },
+        t,
+        reducedMotion,
+        assets
+      );
+
+      if (outHitboxes && cutaway > 0.35 && headPos) {
+        const hs = Math.min(3.2, Math.max(1.0, s * 0.52));
+        const rx = Math.max(18, (ent.kind === 'foreman' ? 24 : 18) * hs);
+        const ryTop = Math.max(22, 24 * hs);
+        const ryBot = Math.max(20, 26 * hs);
+        outHitboxes.push({
+          type: ent.kind,
+          kind: ent.kind,
+          id: ent.id,
+          inHQ: ent.kind === 'agent' ? true : undefined,
+          foreman: ent.kind === 'foreman' ? ent.data : undefined,
+          agent: ent.kind === 'agent' ? ent.data : undefined,
+          label: ent.label,
+          localX: ent.wx - wx,
+          localY: ent.wy - wy,
+          depth: ent.depth - 60,
+          sx: headPos.sx,
+          topY: headPos.sy - ryTop,
+          botY: headPos.sy + ryBot,
+          rx,
+        });
+      }
+
+      if (cutaway > 0.38 && headPos) {
+        const tagScale = Math.min(1.02, Math.max(0.84, s * 0.22));
+        tagDraws.push({
+          sx: headPos.sx,
+          sy: headPos.sy - (ent.mode === 'sleeping' ? 14 : 20) * Math.min(2.2, Math.max(1.0, s * 0.42)),
+          label: ent.label,
+          accent: isSel ? '#38bdf8' : ent.accent,
+          bg: ent.kind === 'foreman' ? 'rgba(34, 24, 10, 0.94)' : 'rgba(11, 17, 28, 0.92)',
+          scale: tagScale,
+          prio: isSel || isHov ? 5 : ent.prio,
+        });
+      }
+    }
+
+    // Collision-free vertical placement for compact interior tags
+    tagDraws.sort((a, b) => b.prio - a.prio);
+    const placedTags = [];
+    const tagAlpha = Math.min(1, (cutaway - 0.32) * 2.2);
+    for (let i = 0; i < tagDraws.length; i++) {
+      const td = tagDraws[i];
+      const estW = Math.min(165, td.label.length * 6.2 * td.scale + 22);
+      const estH = Math.max(16, 17 * td.scale);
+      let y = td.sy;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        let hit = false;
+        for (let j = 0; j < placedTags.length; j++) {
+          const p = placedTags[j];
+          if (Math.abs(td.sx - p.x) < (estW + p.w) * 0.5 + 5 && Math.abs(y - p.y) < (estH + p.h) * 0.5 + 4) {
+            y = p.y - (estH + p.h) * 0.5 - 5;
+            hit = true;
+            break;
+          }
+        }
+        if (!hit) break;
+      }
+      placedTags.push({ x: td.sx, y, w: estW, h: estH });
+      drawCompactTag(ctx, td.sx, y, td.label, td.accent, td.bg, td.scale, tagAlpha);
+    }
+
+    // Crisp floating [E] interact prompt cleanly BELOW feet so it NEVER overlaps name tags above head!
+    if (cutaway > 0.55 && state.rpg?.nearest) {
+      const nr = state.rpg.nearest;
+      const np = project(wx + nr.localX, wy + nr.localY, floorZ + 0.5);
+      drawCompactTag(
+        ctx,
+        np.sx,
+        np.sy + 18,
+        `[E] ${nr.promptLabel || nr.label || 'Interactie'}`,
+        '#38bdf8',
+        'rgba(8, 20, 36, 0.96)',
+        0.90,
+        Math.min(1, (cutaway - 0.5) * 2.5)
+      );
+    }
+
+    ctx.restore();
+  }
+
+  // 3. Architectural Tokyo Glass-and-Steel Exterior Shell (dissolves cleanly on fly-in)
+  const shellAlpha = Math.max(0, 1 - cutaway * 1.45);
+  const roofAlpha = Math.max(0, 1 - cutaway * 2.1);
+  const topZ = floorZ + wallH;
+
+  // Low cutaway glass perimeter walls when interior is exposed
+  if (cutaway > 0.15) {
+    ctx.save();
+    ctx.globalAlpha *= cutaway * 0.65;
+    const cutH = floorZ + 10;
+    const rimX = cutaway > 0.25 ? ihx : hx;
+    const rimY = cutaway > 0.25 ? ihy : hy;
+    const corners = [
+      [-rimX, -rimY],
+      [rimX, -rimY],
+      [rimX, rimY],
+      [-rimX, rimY],
+    ];
+    ctx.strokeStyle = 'rgba(125, 211, 252, 0.52)';
+    ctx.lineWidth = Math.max(1.2, 1.5 * Math.min(2, s));
+    for (let i = 0; i < 4; i++) {
+      const c0 = corners[i];
+      const c1 = corners[(i + 1) % 4];
+      const b0 = project(wx + c0[0], wy + c0[1], floorZ);
+      const t0 = project(wx + c0[0], wy + c0[1], cutH);
+      const t1 = project(wx + c1[0], wy + c1[1], cutH);
+      ctx.beginPath();
+      ctx.moveTo(b0.sx, b0.sy);
+      ctx.lineTo(t0.sx, t0.sy);
+      ctx.lineTo(t1.sx, t1.sy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Full translucent glass-and-steel tower shell
+  if (shellAlpha > 0.04) {
+    ctx.save();
+    ctx.globalAlpha *= shellAlpha;
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx,
+      wy,
+      hx,
+      hy,
+      floorZ,
+      topZ,
+      {
+        south: 'rgba(26, 48, 72, 0.82)',
+        north: 'rgba(16, 30, 48, 0.80)',
+        east: 'rgba(21, 39, 60, 0.82)',
+        west: 'rgba(14, 25, 40, 0.80)',
+        top: roofAlpha > 0.05 ? 'rgba(30, 46, 66, 0.92)' : null,
+      },
+      'rgba(125, 211, 252, 0.42)',
+      (face) => {
+        const [sx0, sy0] = face.wStart;
+        const [sx1, sy1] = face.wEnd;
+        const isLit = face.name === 'south' || face.name === 'east';
+
+        // Floor glass curtain bands + warm interior office glow strips
+        for (let lv = 0; lv < 5; lv++) {
+          const z0 = floorZ + 8 + lv * 15;
+          const z1 = z0 + 8.5;
+          const p0 = project(sx0 + (sx1 - sx0) * 0.08, sy0 + (sy1 - sy0) * 0.08, z0);
+          const p1 = project(sx0 + (sx1 - sx0) * 0.92, sy0 + (sy1 - sy0) * 0.92, z0);
+          const p2 = project(sx0 + (sx1 - sx0) * 0.92, sy0 + (sy1 - sy0) * 0.92, z1);
+          const p3 = project(sx0 + (sx1 - sx0) * 0.08, sy0 + (sy1 - sy0) * 0.08, z1);
+          const col =
+            lv === 0
+              ? isLit
+                ? 'rgba(253, 224, 140, 0.68)'
+                : 'rgba(245, 188, 92, 0.45)'
+              : lv === 4
+                ? 'rgba(56, 189, 248, 0.45)'
+                : isLit
+                  ? 'rgba(186, 230, 253, 0.34)'
+                  : 'rgba(125, 211, 252, 0.20)';
+          fillQuad(ctx, p0, p1, p2, p3, col);
+        }
+
+        // Steel structural vertical mullions
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+        ctx.lineWidth = Math.max(0.8, 1.2 * s);
+        for (const u of [0.28, 0.5, 0.72]) {
+          const m0 = project(sx0 + (sx1 - sx0) * u, sy0 + (sy1 - sy0) * u, floorZ);
+          const m1 = project(sx0 + (sx1 - sx0) * u, sy0 + (sy1 - sy0) * u, topZ);
+          ctx.beginPath();
+          ctx.moveTo(m0.sx, m0.sy);
+          ctx.lineTo(m1.sx, m1.sy);
+          ctx.stroke();
+        }
+
+        // Architectural cyan/gold crown stripe on top facade
+        if (isLit) {
+          const c0 = project(sx0, sy0, topZ - 2.5);
+          const c1 = project(sx1, sy1, topZ - 2.5);
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = Math.max(1.4, 2.4 * s);
+          ctx.beginPath();
+          ctx.moveTo(c0.sx, c0.sy);
+          ctx.lineTo(c1.sx, c1.sy);
+          ctx.stroke();
+        }
+      }
+    );
+    ctx.restore();
+  }
+
+  // 4. Rooftop Architectural Crown, Spire & Pulsing Beacon (fades out cleanly on cutaway)
+  if (roofAlpha > 0.04) {
+    ctx.save();
+    ctx.globalAlpha *= roofAlpha;
+    const crownLift = cutaway * 24;
+    const cz = topZ + crownLift;
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx,
+      wy,
+      26,
+      22,
+      cz,
+      cz + 12,
+      { south: '#334155', north: '#1e293b', east: '#283548', west: '#182232', top: '#475569' },
+      'rgba(56, 189, 248, 0.55)'
+    );
+
+    // Tall sleek architectural communication spire
+    const spireBot = project(wx, wy, cz + 12);
+    const spireTop = project(wx, wy, cz + 44);
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = Math.max(1.4, 2.4 * spireBot.scale);
+    ctx.beginPath();
+    ctx.moveTo(spireBot.sx, spireBot.sy);
+    ctx.lineTo(spireTop.sx, spireTop.sy);
+    ctx.stroke();
+
+    // Pulsing cyan-gold HQ roof beacon
+    const pulse = reducedMotion ? 0.85 : 0.62 + 0.38 * Math.sin(t * 2.8);
+    stampSprite(ctx, assets.glowCyan, spireTop.sx, spireTop.sy, 32 * spireTop.scale, 32 * spireTop.scale, 0.72 * pulse, true);
+    stampSprite(ctx, assets.glowGold, spireTop.sx, spireTop.sy, 16 * spireTop.scale, 16 * spireTop.scale, 0.65 * pulse, true);
+    ctx.fillStyle = '#fef3c7';
+    ctx.beginPath();
+    ctx.arc(spireTop.sx, spireTop.sy, Math.max(1.8, 3.0 * spireTop.scale), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Register HQ building outer hitbox (lower priority than interior agents when cutaway is open)
+  if (outHitboxes) {
+    const pBase = project(wx, wy, 14);
+    const pTop = project(wx, wy, cutaway > 0.45 ? floorZ + 28 : topZ + 14);
+    outHitboxes.push({
+      type: 'hq',
+      kind: 'hq',
+      id: hqId,
+      hq: hqData,
+      depth: cutaway > 0.35 ? pBase.depth + 40 : pBase.depth,
+      sx: pBase.sx,
+      topY: Math.min(pBase.sy - 36 * pBase.scale, pTop.sy - 12 * pTop.scale),
+      botY: pBase.sy + 44 * pBase.scale,
+      rx: 60 * pBase.scale,
+    });
+  }
 }

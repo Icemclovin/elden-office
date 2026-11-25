@@ -9,8 +9,10 @@ import {
   drawConstructionFloor3D,
   drawConstructionSite3D,
   drawExtrudedBox3D,
+  drawHoofdkantoor3D,
   drawPermanentBuilding3D,
   drawSakuraTree3D,
+  drawSiteAgents3D,
   drawStreetlamp3D,
   fillQuad,
   getCityAssets,
@@ -62,6 +64,8 @@ export function createCityScene(canvas, callbacks = {}) {
 
   const onSelect = typeof callbacks.onSelect === 'function' ? callbacks.onSelect : () => {};
   const onHover = typeof callbacks.onHover === 'function' ? callbacks.onHover : () => {};
+  const onHQModeChange =
+    typeof callbacks.onHQModeChange === 'function' ? callbacks.onHQModeChange : () => {};
 
   const motionQuery =
     typeof window !== 'undefined' && window.matchMedia
@@ -80,9 +84,74 @@ export function createCityScene(canvas, callbacks = {}) {
   let chats = [];
   let buildings = [];
   let cityMeta = { level: 1, name: 'Kustdorp', totalBuildings: 0 };
+  let hqData = {
+    id: 'hq-central',
+    name: 'Shin-AI Hoofdkantoor',
+    gridX: 0,
+    gridY: 0,
+    foreman: {
+      id: 'foreman-uitvoerder',
+      name: 'Kuroda',
+      role: 'Uitvoerder',
+      status: 'online',
+      channelScope: 'user-only',
+    },
+    roster: null,
+  };
+  let hqFocused = false;
+  let hqCutaway = 0;
+  let lastNotifiedHQMode = false;
+
+  // RPG camera floor-walker state (spacious 300x220 HQ-local coords clamped inside [-138..138] x [-98..98])
+  const rpg = {
+    x: 0,
+    y: 12,
+    targetX: 0,
+    targetY: 12,
+    nearest: null,
+  };
+  const keys = {
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+  };
+
+  // Persistent zero-GC autonomous walking state across spacious atrium & all 5 HQ wings
+  const agentMotion = new Map();
+  const LOUNGE_WAYPOINTS = [
+    { x: 84, y: 20 },
+    { x: 108, y: 62 },
+    { x: 78, y: -42 },
+    { x: 34, y: -38 },
+    { x: -36, y: -42 },
+    { x: -82, y: -44 },
+    { x: 0, y: -2 },
+    { x: -24, y: 20 },
+    { x: 40, y: 36 },
+  ];
+  const FOREMAN_WAYPOINTS = [
+    { x: -12, y: 62, pause: 5.0 },
+    { x: 0, y: 4, pause: 2.0 },
+    { x: -78, y: -84, pause: 3.6 },
+    { x: 24, y: 66, pause: 2.8 },
+  ];
+  const SITE_WAYPOINTS = [
+    { x: 24, y: 28 },
+    { x: -20, y: 30 },
+    { x: 28, y: -12 },
+  ];
+
+  function notifyHQMode(nextInside) {
+    const inside = Boolean(nextInside);
+    if (inside !== lastNotifiedHQMode) {
+      lastNotifiedHQMode = inside;
+      onHQModeChange(inside);
+    }
+  }
   let filter = 'all';
-  let selection = null; // { kind: 'chat' | 'building', id } | null
-  let hoveredItem = null; // { kind: 'chat' | 'building', id } | null
+  let selection = null; // { kind: 'chat' | 'building' | 'hq' | 'foreman' | 'agent', id } | null
+  let hoveredItem = null;
   let lastHoverScreen = null;
 
   // Animation state per building & active chat
@@ -146,7 +215,7 @@ export function createCityScene(canvas, callbacks = {}) {
     const dy = wy - cam.y;
     const rx = dx * cosY - dy * sinY;
     const ry = dx * sinY + dy * cosY;
-    const depth = Math.max(160, CAMERA_DIST - ry * cosP - wz * sinP);
+    const depth = Math.max(220, CAMERA_DIST - ry * cosP - wz * sinP);
     const camUp = -ry * sinP + wz * cosP;
     const scale = (CAMERA_DIST / depth) * cam.zoom;
     return {
@@ -283,6 +352,31 @@ export function createCityScene(canvas, callbacks = {}) {
   // Reusable per-frame queues (zero GC churn)
   const renderQueue = [];
   const labelQueue = [];
+  const hqHitboxes = [];
+
+  function getEffectiveRoster() {
+    if (Array.isArray(hqData?.roster)) return hqData.roster;
+    // Fallback derivation from chats if backend hasn't pushed hq.roster yet
+    const derived = [];
+    for (let i = 0; i < chats.length; i++) {
+      const c = chats[i];
+      const st = resolveStatus(c.status);
+      const isSite = st === 'working' || st === 'waiting';
+      derived.push({
+        id: c.id,
+        name: c.name || 'AI-bouwer',
+        role: c.role || 'Architect',
+        status: st,
+        location: isSite ? 'site' : 'hq',
+        zone: isSite ? 'site' : st === 'sleeping' ? 'sleep_pods' : 'lounge',
+        buildingId: c.builtBuildingId || null,
+        gridX: c.gridX,
+        gridY: c.gridY,
+        task: c.currentTool || c.summary || '',
+      });
+    }
+    return derived;
+  }
 
   // -------------------------------------------------------------------------
   // District Bounds & Auto-Fit Camera
@@ -393,10 +487,25 @@ export function createCityScene(canvas, callbacks = {}) {
   // -------------------------------------------------------------------------
   // Public State & Camera API
   // -------------------------------------------------------------------------
+  function setHQ(nextHQ) {
+    if (!nextHQ || typeof nextHQ !== 'object') return;
+    hqData = {
+      id: nextHQ.id || 'hq-central',
+      name: nextHQ.name || 'Shin-AI Hoofdkantoor',
+      gridX: Number.isFinite(nextHQ.gridX) ? nextHQ.gridX : 0,
+      gridY: Number.isFinite(nextHQ.gridY) ? nextHQ.gridY : 0,
+      foreman: nextHQ.foreman
+        ? { ...hqData.foreman, ...nextHQ.foreman }
+        : hqData.foreman,
+      roster: Array.isArray(nextHQ.roster) ? nextHQ.roster.slice() : hqData.roster,
+    };
+  }
+
   function setState(payload = {}) {
     const nextChats = Array.isArray(payload.chats) ? payload.chats.slice() : [];
     const nextBuildings = Array.isArray(payload.buildings) ? payload.buildings.slice() : [];
     const nextCity = payload.city || { level: 1, name: 'Kustdorp', totalBuildings: nextBuildings.length };
+    if (payload.hq) setHQ(payload.hq);
 
     chats = nextChats;
     buildings = nextBuildings;
@@ -479,8 +588,8 @@ export function createCityScene(canvas, callbacks = {}) {
       selection = null;
     } else if (typeof sel === 'string') {
       selection = { kind: 'chat', id: sel };
-    } else if (sel.kind && sel.id) {
-      selection = { kind: sel.kind, id: sel.id };
+    } else if ((sel.kind || sel.type) && sel.id) {
+      selection = { kind: sel.kind || sel.type, id: sel.id };
     } else {
       selection = null;
     }
@@ -489,14 +598,18 @@ export function createCityScene(canvas, callbacks = {}) {
   function zoomIn() {
     clearHover();
     userMovedCamera = true;
-    cam.targetZoom = Math.min(2.3, cam.targetZoom * 1.22);
+    cam.targetZoom = Math.min(12.0, cam.targetZoom * 1.24);
     if (reducedMotion) cam.zoom = cam.targetZoom;
   }
 
   function zoomOut() {
     clearHover();
     userMovedCamera = true;
-    cam.targetZoom = Math.max(0.38, cam.targetZoom / 1.22);
+    cam.targetZoom = Math.max(0.38, cam.targetZoom / 1.24);
+    if (hqFocused && cam.targetZoom < 2.2) {
+      hqFocused = false;
+      notifyHQMode(false);
+    }
     if (reducedMotion) cam.zoom = cam.targetZoom;
   }
 
@@ -527,6 +640,8 @@ export function createCityScene(canvas, callbacks = {}) {
 
   function resetView() {
     clearHover();
+    hqFocused = false;
+    notifyHQMode(false);
     userMovedCamera = false;
     tiltMode = '3d';
     cam.targetYaw = DEFAULT_YAW;
@@ -534,9 +649,112 @@ export function createCityScene(canvas, callbacks = {}) {
     applyAutoFit(false);
   }
 
+  function focusHQZone(zone = 'overview') {
+    clearHover();
+    hqFocused = true;
+    notifyHQMode(true);
+    userMovedCamera = true;
+    tiltMode = '3d';
+    const wp = gridToWorld(hqData?.gridX ?? 0, hqData?.gridY ?? 0);
+    const availW = viewW >= 1100 ? viewW - 380 : viewW - 48;
+    const availH = Math.max(360, viewH - 128);
+    const baseZ = Math.max(2.2, Math.min(3.6, Math.min(availW / 322, availH / 212)));
+    const roomZ = Math.max(5.8, Math.min(7.2, baseZ * 1.95));
+
+    let ox = 0;
+    let oy = 0;
+    let targetZ = baseZ;
+    let targetPitch = (52 * Math.PI) / 180;
+    if (zone === 'command') {
+      ox = 0;
+      oy = 62;
+      targetZ = roomZ;
+      targetPitch = (50 * Math.PI) / 180;
+    } else if (zone === 'sleep_pods') {
+      ox = -98;
+      oy = 42;
+      targetZ = roomZ;
+      targetPitch = (52 * Math.PI) / 180;
+    } else if (zone === 'war_room') {
+      ox = -80;
+      oy = -64;
+      targetZ = roomZ;
+      targetPitch = (50 * Math.PI) / 180;
+    } else if (zone === 'lab') {
+      ox = 80;
+      oy = -64;
+      targetZ = roomZ;
+      targetPitch = (50 * Math.PI) / 180;
+    } else if (zone === 'lounge') {
+      ox = 98;
+      oy = 42;
+      targetZ = roomZ;
+      targetPitch = (52 * Math.PI) / 180;
+    }
+    const drawerShiftX = viewW >= 1100 ? 180 / targetZ : 0;
+    rpg.targetX = zone === 'overview' ? 0 : ox;
+    rpg.targetY = zone === 'overview' ? 12 : oy;
+    cam.targetX = wp.x + ox + drawerShiftX;
+    cam.targetY = wp.y + oy;
+    cam.targetPitch = targetPitch;
+    cam.targetYaw = 0;
+    cam.targetZoom = targetZ;
+    if (reducedMotion) {
+      rpg.x = rpg.targetX;
+      rpg.y = rpg.targetY;
+      cam.x = cam.targetX;
+      cam.y = cam.targetY;
+      cam.pitch = cam.targetPitch;
+      cam.yaw = cam.targetYaw;
+      cam.zoom = cam.targetZoom;
+      hqCutaway = 1;
+    }
+  }
+
+  function focusHQ() {
+    focusHQZone('overview');
+  }
+
+  function exitHQInterior() {
+    clearHover();
+    hqFocused = false;
+    notifyHQMode(false);
+    userMovedCamera = false;
+    tiltMode = '3d';
+    cam.targetYaw = DEFAULT_YAW;
+    cam.targetPitch = PITCH_3D;
+    applyAutoFit(false);
+    if (reducedMotion) hqCutaway = 0;
+  }
+
+  function isHQFocused() {
+    return Boolean(hqFocused || hqCutaway > 0.45);
+  }
+
   function focusItem(kind, id) {
+    if (kind === 'hq' || kind === 'foreman') {
+      focusHQ();
+      return;
+    }
     let target = null;
-    if (kind === 'building') {
+    if (kind === 'agent') {
+      const roster = getEffectiveRoster();
+      const ag = roster.find((a) => a.id === id);
+      if (ag && (ag.location === 'hq' || ag.zone === 'sleep_pods' || ag.zone === 'lounge' || ag.zone === 'war_room' || ag.zone === 'lab')) {
+        if (ag.zone === 'sleep_pods' || ag.zone === 'lounge' || ag.zone === 'war_room' || ag.zone === 'lab') {
+          focusHQZone(ag.zone);
+        } else {
+          focusHQ();
+        }
+        return;
+      }
+      if (ag && Number.isFinite(ag.gridX) && Number.isFinite(ag.gridY)) {
+        target = ag;
+      } else if (ag && ag.buildingId) {
+        target = buildings.find((b) => b.id === ag.buildingId);
+      }
+      if (!target) target = chats.find((c) => c.id === id);
+    } else if (kind === 'building') {
       target = buildings.find((b) => b.id === id);
     } else {
       target = chats.find((c) => c.id === id);
@@ -547,10 +765,12 @@ export function createCityScene(canvas, callbacks = {}) {
     }
     if (!target) return;
     clearHover();
+    hqFocused = false;
+    notifyHQMode(false);
     userMovedCamera = true;
     const wp = gridToWorld(target.gridX, target.gridY);
-    const targetZ = Math.max(1.06, Math.min(1.42, computeAutoFitZoom(cam.targetPitch) * 1.35));
-    const drawerShift = viewW >= 960 ? 155 / targetZ : 0;
+    const targetZ = Math.max(1.18, Math.min(1.68, computeAutoFitZoom(cam.targetPitch) * 1.48));
+    const drawerShift = viewW >= 960 ? 145 / targetZ : 0;
     const cY = Math.cos(cam.targetYaw);
     const sY = Math.sin(cam.targetYaw);
     cam.targetX = wp.x + drawerShift * cY;
@@ -610,43 +830,51 @@ export function createCityScene(canvas, callbacks = {}) {
     const sy = clientY - rect.top;
     syncCameraBasis();
 
-    const buildingIds = new Set(buildings.map((b) => b.id));
-    const buildingChatIds = new Set(buildings.map((b) => b.chatId).filter(Boolean));
     const candidates = [];
 
-    for (let i = 0; i < buildings.length; i++) {
-      const b = buildings[i];
-      const wp = gridToWorld(b.gridX, b.gridY);
-      const topZ = b.buildingType === 'flat' ? 28 + Math.min(12, b.floors || 6) * 12 : 46;
-      const pBase = project(wp.x, wp.y, 14);
-      const pTop = project(wp.x, wp.y, topZ);
-      candidates.push({
-        kind: 'building',
-        id: b.id,
-        building: b,
-        depth: pBase.depth,
-        sx: pBase.sx,
-        topY: Math.min(pBase.sy - 32 * pBase.scale, pTop.sy - 12 * pTop.scale),
-        botY: pBase.sy + 38 * pBase.scale,
-        rx: 56 * pBase.scale,
-      });
+    if (!(hqCutaway > 0.35 || hqFocused)) {
+      const buildingIds = new Set(buildings.map((b) => b.id));
+      const buildingChatIds = new Set(buildings.map((b) => b.chatId).filter(Boolean));
+
+      for (let i = 0; i < buildings.length; i++) {
+        const b = buildings[i];
+        const wp = gridToWorld(b.gridX, b.gridY);
+        const topZ = b.buildingType === 'flat' ? 28 + Math.min(12, b.floors || 6) * 12 : 46;
+        const pBase = project(wp.x, wp.y, 14);
+        const pTop = project(wp.x, wp.y, topZ);
+        candidates.push({
+          kind: 'building',
+          id: b.id,
+          building: b,
+          depth: pBase.depth,
+          sx: pBase.sx,
+          topY: Math.min(pBase.sy - 32 * pBase.scale, pTop.sy - 12 * pTop.scale),
+          botY: pBase.sy + 38 * pBase.scale,
+          rx: 56 * pBase.scale,
+        });
+      }
+
+      for (let i = 0; i < chats.length; i++) {
+        const c = chats[i];
+        if (!isActiveConstructionChat(c, buildingIds, buildingChatIds)) continue;
+        const wp = gridToWorld(c.gridX, c.gridY);
+        const pBase = project(wp.x, wp.y, 20);
+        candidates.push({
+          kind: 'chat',
+          id: c.id,
+          chat: c,
+          depth: pBase.depth - 2,
+          sx: pBase.sx,
+          topY: pBase.sy - 72 * pBase.scale,
+          botY: pBase.sy + 48 * pBase.scale,
+          rx: 60 * pBase.scale,
+        });
+      }
     }
 
-    for (let i = 0; i < chats.length; i++) {
-      const c = chats[i];
-      if (!isActiveConstructionChat(c, buildingIds, buildingChatIds)) continue;
-      const wp = gridToWorld(c.gridX, c.gridY);
-      const pBase = project(wp.x, wp.y, 20);
-      candidates.push({
-        kind: 'chat',
-        id: c.id,
-        chat: c,
-        depth: pBase.depth - 2,
-        sx: pBase.sx,
-        topY: pBase.sy - 72 * pBase.scale,
-        botY: pBase.sy + 48 * pBase.scale,
-        rx: 60 * pBase.scale,
-      });
+    // Include HQ building & cutaway interior (Uitvoerder + HQ agents) hitboxes
+    for (let i = 0; i < hqHitboxes.length; i++) {
+      candidates.push(hqHitboxes[i]);
     }
 
     // Front-to-back order (smallest camera depth wins)
@@ -655,6 +883,21 @@ export function createCityScene(canvas, callbacks = {}) {
     for (let i = 0; i < candidates.length; i++) {
       const cand = candidates[i];
       if (sx >= cand.sx - cand.rx && sx <= cand.sx + cand.rx && sy >= cand.topY && sy <= cand.botY) {
+        if (cand.kind === 'hq') {
+          return { type: 'hq', kind: 'hq', id: cand.id, hq: cand.hq };
+        }
+        if (cand.kind === 'foreman') {
+          return { type: 'foreman', kind: 'foreman', id: cand.id, foreman: cand.foreman };
+        }
+        if (cand.kind === 'hq_holo') {
+          return { type: 'hq_holo', kind: 'hq_holo', id: cand.id, label: cand.label };
+        }
+        if (cand.kind === 'hq_zone') {
+          return { type: 'hq_zone', kind: 'hq_zone', zone: cand.zone, id: cand.id, label: cand.label };
+        }
+        if (cand.kind === 'agent') {
+          return { type: 'agent', kind: 'agent', id: cand.id, inHQ: true, agent: cand.agent };
+        }
         return cand.kind === 'building'
           ? { kind: 'building', id: cand.id, building: cand.building }
           : { kind: 'chat', id: cand.id, chat: cand.chat };
@@ -756,7 +999,31 @@ export function createCityScene(canvas, callbacks = {}) {
 
     if (!wasDragging && !wasOrbit) {
       const hit = hitTestScreen(e.clientX, e.clientY);
-      if (hit) {
+      const insideHQ = hqCutaway > 0.35 || hqFocused;
+      if (insideHQ && (!hit || hit.kind === 'hq')) {
+        // Click empty HQ floor -> smoothly glide RPG camera target to that floor point
+        syncCameraBasis();
+        const w = unprojectFloor(e.clientX, e.clientY);
+        const hqW = gridToWorld(hqData?.gridX ?? 0, hqData?.gridY ?? 0);
+        const lx = w.x - hqW.x;
+        const ly = w.y - hqW.y;
+        if (Math.abs(lx) <= 148 && Math.abs(ly) <= 108) {
+          rpg.targetX = Math.max(-138, Math.min(138, lx));
+          rpg.targetY = Math.max(-98, Math.min(98, ly));
+          const drawerShiftX = viewW >= 1100 ? 180 / Math.max(2.2, cam.targetZoom) : 0;
+          cam.targetX = hqW.x + rpg.targetX + drawerShiftX;
+          cam.targetY = hqW.y + rpg.targetY;
+          if (reducedMotion) {
+            rpg.x = rpg.targetX;
+            rpg.y = rpg.targetY;
+            cam.x = cam.targetX;
+            cam.y = cam.targetY;
+          }
+        }
+      } else if (hit) {
+        if (hit.kind === 'hq' && !hqFocused && hqCutaway < 0.45) {
+          focusHQ();
+        }
         selection = { kind: hit.kind, id: hit.id };
         onSelect(hit);
       } else {
@@ -775,9 +1042,59 @@ export function createCityScene(canvas, callbacks = {}) {
     e.preventDefault();
     clearHover();
     userMovedCamera = true;
-    const factor = e.deltaY < 0 ? 1.11 : 1 / 1.11;
-    cam.targetZoom = Math.max(0.38, Math.min(2.3, cam.targetZoom * factor));
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    cam.targetZoom = Math.max(0.38, Math.min(12.0, cam.targetZoom * factor));
+    if (hqFocused && cam.targetZoom < 2.2) {
+      hqFocused = false;
+      notifyHQMode(false);
+      cam.targetYaw = DEFAULT_YAW;
+      cam.targetPitch = PITCH_3D;
+    }
     if (reducedMotion) cam.zoom = cam.targetZoom;
+  }
+
+  function isTypingInForm() {
+    if (typeof document === 'undefined') return false;
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || Boolean(el.isContentEditable);
+  }
+
+  function handleKeyDown(e) {
+    if (isTypingInForm()) return;
+    if (!(hqFocused || hqCutaway > 0.45)) return;
+    const code = e.code;
+    if (code === 'KeyW' || code === 'ArrowUp') {
+      keys.up = true;
+      if (code === 'ArrowUp') e.preventDefault();
+    } else if (code === 'KeyS' || code === 'ArrowDown') {
+      keys.down = true;
+      if (code === 'ArrowDown') e.preventDefault();
+    } else if (code === 'KeyA' || code === 'ArrowLeft') {
+      keys.left = true;
+      if (code === 'ArrowLeft') e.preventDefault();
+    } else if (code === 'KeyD' || code === 'ArrowRight') {
+      keys.right = true;
+      if (code === 'ArrowRight') e.preventDefault();
+    } else if (code === 'KeyE' && !e.repeat && rpg.nearest) {
+      e.preventDefault();
+      const nr = rpg.nearest;
+      selection = { kind: nr.kind, id: nr.id };
+      onSelect(nr.payload);
+    }
+  }
+
+  function handleKeyUp(e) {
+    const code = e.code;
+    if (code === 'KeyW' || code === 'ArrowUp') keys.up = false;
+    else if (code === 'KeyS' || code === 'ArrowDown') keys.down = false;
+    else if (code === 'KeyA' || code === 'ArrowLeft') keys.left = false;
+    else if (code === 'KeyD' || code === 'ArrowRight') keys.right = false;
+  }
+
+  function handleWindowBlur() {
+    keys.up = keys.down = keys.left = keys.right = false;
   }
 
   canvas.addEventListener('contextmenu', handleContextMenu);
@@ -787,6 +1104,11 @@ export function createCityScene(canvas, callbacks = {}) {
   canvas.addEventListener('pointercancel', handlePointerUp);
   canvas.addEventListener('pointerleave', handlePointerLeave);
   canvas.addEventListener('wheel', handleWheel, { passive: false });
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
+  }
 
   // -------------------------------------------------------------------------
   // Tokyo Ground, Waterfront Canal, Avenues, Crosswalks & Growth Elements
@@ -918,47 +1240,32 @@ export function createCityScene(canvas, callbacks = {}) {
     }
     ctx.setLineDash([]);
 
-    // Iconic Shibuya-style Scramble Crossing at central crossroads (0, 0)
+    // Perimeter crosswalks framing the central Hoofdkantoor (HQ) plaza at (0, 0)
     if (minGX <= 0 && maxGX >= 0 && minGY <= 0 && maxGY >= 0) {
-      ctx.strokeStyle = 'rgba(226, 232, 240, 0.44)';
-      ctx.lineWidth = 2.0;
+      ctx.strokeStyle = 'rgba(226, 232, 240, 0.40)';
+      ctx.lineWidth = 1.9;
       for (let k = -3; k <= 3; k++) {
-        // North & South crosswalks
-        const n0 = project(k * 13, -52, 0.5);
-        const n1 = project(k * 13, -72, 0.5);
-        const s0 = project(k * 13, 52, 0.5);
-        const s1 = project(k * 13, 72, 0.5);
+        // North & South crosswalks outside HQ plaza
+        const n0 = project(k * 13, -58, 0.5);
+        const n1 = project(k * 13, -74, 0.5);
+        const s0 = project(k * 13, 58, 0.5);
+        const s1 = project(k * 13, 74, 0.5);
         ctx.beginPath();
         ctx.moveTo(n0.sx, n0.sy);
         ctx.lineTo(n1.sx, n1.sy);
         ctx.moveTo(s0.sx, s0.sy);
         ctx.lineTo(s1.sx, s1.sy);
         ctx.stroke();
-        // East & West crosswalks
-        const e0 = project(52, k * 13, 0.5);
-        const e1 = project(72, k * 13, 0.5);
-        const w0 = project(-52, k * 13, 0.5);
-        const w1 = project(-72, k * 13, 0.5);
+        // East & West crosswalks outside HQ plaza
+        const e0 = project(58, k * 13, 0.5);
+        const e1 = project(74, k * 13, 0.5);
+        const w0 = project(-58, k * 13, 0.5);
+        const w1 = project(-74, k * 13, 0.5);
         ctx.beginPath();
         ctx.moveTo(e0.sx, e0.sy);
         ctx.lineTo(e1.sx, e1.sy);
         ctx.moveTo(w0.sx, w0.sy);
         ctx.lineTo(w1.sx, w1.sy);
-        ctx.stroke();
-      }
-      // Subtle diagonal scramble stripes across (0,0)
-      ctx.strokeStyle = 'rgba(226, 232, 240, 0.28)';
-      ctx.lineWidth = 1.6;
-      for (let k = -1; k <= 1; k++) {
-        const d0 = project(-36 + k * 9, -36 - k * 9, 0.5);
-        const d1 = project(36 + k * 9, 36 - k * 9, 0.5);
-        const d2 = project(-36 + k * 9, 36 + k * 9, 0.5);
-        const d3 = project(36 + k * 9, -36 + k * 9, 0.5);
-        ctx.beginPath();
-        ctx.moveTo(d0.sx, d0.sy);
-        ctx.lineTo(d1.sx, d1.sy);
-        ctx.moveTo(d2.sx, d2.sy);
-        ctx.lineTo(d3.sx, d3.sy);
         ctx.stroke();
       }
     }
@@ -1192,9 +1499,179 @@ export function createCityScene(canvas, callbacks = {}) {
     const damp = reducedMotion ? 1 : 1 - Math.exp(-9.5 * dt);
     cam.x += (cam.targetX - cam.x) * damp;
     cam.y += (cam.targetY - cam.y) * damp;
-    cam.yaw += (cam.targetYaw - cam.yaw) * damp;
+    let dyaw = ((cam.targetYaw - cam.yaw + Math.PI) % (Math.PI * 2)) - Math.PI;
+    if (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    cam.yaw += dyaw * damp;
     cam.pitch += (cam.targetPitch - cam.pitch) * damp;
     cam.zoom += (cam.targetZoom - cam.zoom) * damp;
+
+    // Smooth HQ cutaway transition when focused OR zoomed in close to HQ (0,0)
+    const hqW = gridToWorld(hqData?.gridX ?? 0, hqData?.gridY ?? 0);
+    let targetCutaway = 0;
+    if (hqFocused) {
+      targetCutaway = 1;
+    } else if (cam.zoom > 1.52) {
+      const dist = Math.hypot(cam.x - hqW.x, cam.y - hqW.y);
+      if (dist < 220) {
+        const zoomFactor = Math.min(1, (cam.zoom - 1.52) / 0.82);
+        const distFactor = Math.min(1, (220 - dist) / 110);
+        targetCutaway = zoomFactor * distFactor;
+      }
+    }
+    hqCutaway += (targetCutaway - hqCutaway) * damp;
+    notifyHQMode(hqFocused || hqCutaway > 0.45);
+
+    // RPG Camera WASD / Arrow movement inside HQ floor bounds
+    if (hqFocused || hqCutaway > 0.45) {
+      const moveR = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+      const moveF = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
+      if (moveR !== 0 || moveF !== 0) {
+        const len = Math.hypot(moveR, moveF) || 1;
+        const speed = 86 * dt;
+        const cY = Math.cos(cam.yaw);
+        const sY = Math.sin(cam.yaw);
+        const dx = ((moveR / len) * cY + (moveF / len) * -sY) * speed;
+        const dy = ((moveR / len) * -sY + (moveF / len) * -cY) * speed;
+        rpg.targetX = Math.max(-138, Math.min(138, rpg.targetX + dx));
+        rpg.targetY = Math.max(-98, Math.min(98, rpg.targetY + dy));
+        if (cam.targetZoom < 5.6) cam.targetZoom = 6.2;
+        const drawerShiftX = viewW >= 1100 ? 180 / Math.max(2.2, cam.targetZoom) : 0;
+        cam.targetX = hqW.x + rpg.targetX + drawerShiftX;
+        cam.targetY = hqW.y + rpg.targetY;
+        userMovedCamera = true;
+      }
+      rpg.x += (rpg.targetX - rpg.x) * damp;
+      rpg.y += (rpg.targetY - rpg.y) * damp;
+    }
+
+    // Autonomous walking agents (Kuroda, HQ Lounge agents, active Working site agents)
+    const roster = getEffectiveRoster();
+    const cYaw = Math.cos(cam.yaw);
+    const sYaw = Math.sin(cam.yaw);
+
+    const stepWalker = (id, waypoints, speed, defaultPause, seedOffset) => {
+      let m = agentMotion.get(id);
+      const h = hashString(id);
+      if (!m) {
+        const startIdx = (h + seedOffset) % waypoints.length;
+        const wp0 = waypoints[startIdx];
+        m = {
+          x: wp0.x,
+          y: wp0.y,
+          wpIdx: (startIdx + 1) % waypoints.length,
+          pauseT: 0.8 + ((h % 18) / 10),
+          walkPhase: (h % 628) / 100,
+          facing: 1,
+          isWalking: false,
+        };
+        agentMotion.set(id, m);
+      }
+      const isPausedByUser =
+        reducedMotion ||
+        (hoveredItem && hoveredItem.id === id) ||
+        (selection && selection.id === id);
+      if (isPausedByUser) {
+        m.isWalking = false;
+        return;
+      }
+      if (m.pauseT > 0) {
+        m.pauseT -= dt;
+        m.isWalking = false;
+        return;
+      }
+      const dst = waypoints[m.wpIdx % waypoints.length];
+      const dx = dst.x - m.x;
+      const dy = dst.y - m.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1.2) {
+        m.x = dst.x;
+        m.y = dst.y;
+        m.isWalking = false;
+        m.wpIdx = (m.wpIdx + 1) % waypoints.length;
+        m.pauseT = dst.pause != null ? dst.pause : defaultPause + ((h + m.wpIdx * 7) % 16) / 10;
+      } else {
+        const stepLen = Math.min(dist, speed * dt);
+        const vx = (dx / dist) * stepLen;
+        const vy = (dy / dist) * stepLen;
+        m.x += vx;
+        m.y += vy;
+        m.isWalking = true;
+        m.walkPhase += dt * 9.5;
+        const screenDx = vx * cYaw - vy * sYaw;
+        if (Math.abs(screenDx) > 0.001) m.facing = screenDx >= 0 ? 1 : -1;
+      }
+    };
+
+    // 1. Uitvoerder Kuroda
+    const foremanId = hqData?.foreman?.id || 'foreman-uitvoerder';
+    stepWalker(foremanId, FOREMAN_WAYPOINTS, 13.5, 3.0, 0);
+
+    // 2. HQ standby agents (lounge / war_room / lab) + active site working agents
+    for (let i = 0; i < roster.length; i++) {
+      const ag = roster[i];
+      const isHQRoam =
+        ag.zone === 'lounge' ||
+        ag.zone === 'war_room' ||
+        ag.zone === 'lab' ||
+        (ag.location === 'hq' && ag.zone !== 'sleep_pods' && ag.status !== 'sleeping');
+      if (isHQRoam) {
+        stepWalker(ag.id, LOUNGE_WAYPOINTS, 15.5, 2.2, i);
+      } else if (ag.status === 'working') {
+        stepWalker(ag.id, SITE_WAYPOINTS, 13.0, 2.5, i);
+      }
+    }
+    for (let i = 0; i < chats.length; i++) {
+      const c = chats[i];
+      if (resolveStatus(c.status) === 'working' && !agentMotion.has(c.id)) {
+        stepWalker(c.id, SITE_WAYPOINTS, 13.0, 2.5, i);
+      }
+    }
+
+    // Update nearest HQ interactable for [E] prompt
+    if (hqFocused || hqCutaway > 0.45) {
+      let best = null;
+      let bestD = 44;
+      const checkCand = (lx, ly, kind, id, promptLabel, payload) => {
+        const d = Math.hypot(lx - rpg.x, ly - rpg.y);
+        if (d < bestD) {
+          bestD = d;
+          best = { localX: lx, localY: ly, kind, id, promptLabel, payload };
+        }
+      };
+      const fM = agentMotion.get(foremanId);
+      const fm = hqData?.foreman || { id: foremanId, name: 'Kuroda', role: 'Uitvoerder' };
+      checkCand(
+        fM ? fM.x : -12,
+        fM ? fM.y : 62,
+        'foreman',
+        foremanId,
+        `Spreek ${fm.name || 'Kuroda'}`,
+        { type: 'foreman', kind: 'foreman', id: foremanId, foreman: fm }
+      );
+      checkCand(-80, -104, 'hq_holo', 'hq-holo-display', 'Stadsstatus Holo', {
+        type: 'hq_holo',
+        kind: 'hq_holo',
+        id: 'hq-holo-display',
+        label: 'Stadsstatus Holo-Display',
+      });
+      for (let i = 0; i < roster.length; i++) {
+        const ag = roster[i];
+        if (ag.location !== 'hq' && ag.zone !== 'sleep_pods' && ag.zone !== 'lounge' && ag.zone !== 'war_room' && ag.zone !== 'lab') continue;
+        const m = agentMotion.get(ag.id);
+        const ax = m ? m.x : ag.zone === 'sleep_pods' || ag.status === 'sleeping' ? -98 : 88;
+        const ay = m ? m.y : ag.zone === 'sleep_pods' || ag.status === 'sleeping' ? 42 : 28;
+        checkCand(ax, ay, 'agent', ag.id, ag.name || 'Agent', {
+          type: 'agent',
+          kind: 'agent',
+          id: ag.id,
+          inHQ: true,
+          agent: ag,
+        });
+      }
+      rpg.nearest = best;
+    } else {
+      rpg.nearest = null;
+    }
 
     // Building smooth rise-up (0 -> 1 over ~700ms) & celebration shimmer decay
     const bAlphaDamp = reducedMotion ? 1 : 1 - Math.exp(-8.5 * dt);
@@ -1274,6 +1751,37 @@ export function createCityScene(canvas, callbacks = {}) {
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+    const effectiveRoster = getEffectiveRoster();
+    const hqGx = Number.isFinite(hqData?.gridX) ? hqData.gridX : 0;
+    const hqGy = Number.isFinite(hqData?.gridY) ? hqData.gridY : 0;
+    const hqWp = gridToWorld(hqGx, hqGy);
+
+    // Exclusive HQ RPG Overview Mode: skip exterior city completely when hqCutaway >= 0.92
+    if (hqCutaway >= 0.92) {
+      hqHitboxes.length = 0;
+      ctx.drawImage(assets.hqStudioBackdrop, 0, 0, viewW, viewH);
+      drawHoofdkantoor3D(
+        ctx,
+        project,
+        hqWp.x,
+        hqWp.y,
+        { ...hqData, roster: effectiveRoster },
+        {
+          cutaway: 1,
+          selected: selection,
+          hovered: hoveredItem,
+          agentMotion,
+          rpg,
+        },
+        elapsed,
+        reducedMotion,
+        hqHitboxes
+      );
+      ctx.drawImage(assets.vignette, 0, 0, viewW, viewH);
+      ctx.restore();
+      return;
+    }
+
     // 1. Pre-baked Tokyo Twilight Sky Backdrop (zero per-frame gradient alloc)
     ctx.drawImage(assets.backdrop, 0, 0, viewW, viewH);
 
@@ -1310,8 +1818,17 @@ export function createCityScene(canvas, callbacks = {}) {
 
     // 4. Build True Painter's Depth-Sorted 3D Render Queue
     renderQueue.length = 0;
+    hqHitboxes.length = 0;
 
-    // 4a. Permanent Completed 3D Buildings
+    // 4a. Central Hoofdkantoor (HQ) at (0,0)
+    // When transitioning into HQ (hqCutaway > 0.05), HQ is drawn AFTER the dark studio backdrop fade
+    const drawHQOnTop = hqCutaway > 0.05;
+    if (!drawHQOnTop) {
+      const hqProj = project(hqWp.x, hqWp.y, 16);
+      renderQueue.push({ kind: 'hq', depth: hqProj.depth, wx: hqWp.x, wy: hqWp.y });
+    }
+
+    // 4b. Permanent Completed 3D Buildings
     for (let i = 0; i < buildings.length; i++) {
       const b = buildings[i];
       const wp = gridToWorld(b.gridX, b.gridY);
@@ -1319,7 +1836,7 @@ export function createCityScene(canvas, callbacks = {}) {
       renderQueue.push({ kind: 'building', depth: p.depth, b, wx: wp.x, wy: wp.y });
     }
 
-    // 4b. Active AI Construction Sites
+    // 4c. Active AI Construction Sites
     for (let i = 0; i < chats.length; i++) {
       const c = chats[i];
       if (!isActiveConstructionChat(c, buildingIdSet, buildingChatIdSet)) continue;
@@ -1328,7 +1845,7 @@ export function createCityScene(canvas, callbacks = {}) {
       renderQueue.push({ kind: 'construction', depth: p.depth, c, wx: wp.x, wy: wp.y });
     }
 
-    // 4c. Level 2+: Warm Sodium-Amber Streetlamps & Blooming Sidewalk Sakura Trees
+    // 4d. Level 2+: Warm Sodium-Amber Streetlamps & Blooming Sidewalk Sakura Trees
     if (level >= 2) {
       const { minGX, maxGX, minGY, maxGY, maxY } = district;
       const isBlvd = (g) => g === 0 || Math.abs(g) === 4 || Math.abs(g) === 8;
@@ -1361,7 +1878,25 @@ export function createCityScene(canvas, callbacks = {}) {
 
     for (let i = 0; i < renderQueue.length; i++) {
       const item = renderQueue[i];
-      if (item.kind === 'building') {
+      if (item.kind === 'hq') {
+        drawHoofdkantoor3D(
+          ctx,
+          project,
+          item.wx,
+          item.wy,
+          { ...hqData, roster: effectiveRoster },
+          {
+            cutaway: hqCutaway,
+            selected: selection,
+            hovered: hoveredItem,
+            agentMotion,
+            rpg,
+          },
+          elapsed,
+          reducedMotion,
+          hqHitboxes
+        );
+      } else if (item.kind === 'building') {
         const anim = buildingAnim.get(item.b.id) || { rise: 1, celebrateT: 0, alpha: 1 };
         drawPermanentBuilding3D(
           ctx,
@@ -1381,6 +1916,29 @@ export function createCityScene(canvas, callbacks = {}) {
           elapsed,
           reducedMotion
         );
+        // Draw any active working/waiting agents stationed at this building parcel
+        const siteAgents = effectiveRoster.filter(
+          (a) =>
+            (a.status === 'working' || a.status === 'waiting') &&
+            (a.buildingId === item.b.id ||
+              (Number.isFinite(a.gridX) &&
+                Number.isFinite(a.gridY) &&
+                a.gridX === item.b.gridX &&
+                a.gridY === item.b.gridY))
+        );
+        if (siteAgents.length > 0) {
+          drawSiteAgents3D(
+            ctx,
+            project,
+            item.wx,
+            item.wy,
+            siteAgents,
+            elapsed,
+            reducedMotion,
+            hqCutaway <= 0.35 && cam.zoom >= 0.78,
+            agentMotion
+          );
+        }
       } else if (item.kind === 'construction') {
         const anim = chatAnim.get(item.c.id) || { alpha: 1, dimAlpha: 1, pulsePhase: 0 };
         drawConstructionSite3D(
@@ -1394,6 +1952,7 @@ export function createCityScene(canvas, callbacks = {}) {
             hovered: hoveredItem?.kind === 'chat' && hoveredItem.id === item.c.id,
             alpha: anim.alpha * anim.dimAlpha,
             pulsePhase: anim.pulsePhase,
+            agentMotion,
           },
           elapsed,
           reducedMotion
@@ -1408,6 +1967,31 @@ export function createCityScene(canvas, callbacks = {}) {
     // 5. Level 4+: Elevated Tokyo Monorail Viaduct & Gliding Illuminated Train
     if (level >= 4) {
       drawTokyoMonorail3D();
+    }
+
+    // 5b. Smooth HQ Transition: fade opaque dark studio backdrop over exterior city & render HQ on top
+    if (drawHQOnTop) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, hqCutaway * 1.18);
+      ctx.drawImage(assets.hqStudioBackdrop, 0, 0, viewW, viewH);
+      ctx.restore();
+      drawHoofdkantoor3D(
+        ctx,
+        project,
+        hqWp.x,
+        hqWp.y,
+        { ...hqData, roster: effectiveRoster },
+        {
+          cutaway: hqCutaway,
+          selected: selection,
+          hovered: hoveredItem,
+          agentMotion,
+          rpg,
+        },
+        elapsed,
+        reducedMotion,
+        hqHitboxes
+      );
     }
 
     // 6. Drifting Pink Sakura Petals (Level 3+ or light dusk petals) & Celebration Bursts
@@ -1437,135 +2021,127 @@ export function createCityScene(canvas, callbacks = {}) {
       ctx.fill();
     }
 
-    // 7. Crisp Collision-Separated Architectural Nameplates HUD Pass
+    // 7. Crisp Collision-Culled Architectural Nameplates HUD Pass
+    // Hide ALL exterior city tags completely when inside HQ interior mode!
     labelQueue.length = 0;
 
-    // Active construction plots show labels (omit 'done' chats already linked to a permanent building unless selected/hovered/filter==='done')
-    for (let i = 0; i < chats.length; i++) {
-      const c = chats[i];
-      if (!isActiveConstructionChat(c, buildingIdSet, buildingChatIdSet)) continue;
-      const isSel = selection?.kind === 'chat' && selection.id === c.id;
-      const isHov = hoveredItem?.kind === 'chat' && hoveredItem.id === c.id;
-      if (c.status === 'done' && (c.builtBuildingId || buildingChatIdSet.has(c.id)) && !isSel && !isHov && filter !== 'done') {
-        continue;
+    if (hqCutaway <= 0.35) {
+      // Central Hoofdkantoor (HQ) nameplate
+      const hqBaseP = project(hqWp.x, hqWp.y, 0);
+      const hqItem = { kind: 'hq', id: hqData?.id || 'hq-central', hq: hqData };
+      const hqScale = viewW < 900 ? hqBaseP.scale * 0.88 : hqBaseP.scale;
+      const hqMetrics = measureCityLabel(ctx, hqItem, hqScale);
+      const isHqSel = selection?.kind === 'hq';
+      const isHqHov = hoveredItem?.kind === 'hq';
+      labelQueue.push({
+        item: hqItem,
+        depth: hqBaseP.depth,
+        x: hqBaseP.sx,
+        y: hqBaseP.sy + 32 * hqBaseP.scale,
+        metrics: hqMetrics,
+        selected: isHqSel,
+        hovered: isHqHov,
+        alpha: Math.max(0, 1 - hqCutaway * 2.8),
+        prio: isHqSel || isHqHov ? 5 : 4,
+        hidden: false,
+      });
+
+      // Active construction plots show labels (omit 'done' chats already linked to a permanent building unless selected/hovered/filter==='done')
+      for (let i = 0; i < chats.length; i++) {
+        const c = chats[i];
+        if (!isActiveConstructionChat(c, buildingIdSet, buildingChatIdSet)) continue;
+        const isSel = selection?.kind === 'chat' && selection.id === c.id;
+        const isHov = hoveredItem?.kind === 'chat' && hoveredItem.id === c.id;
+        if (c.status === 'done' && (c.builtBuildingId || buildingChatIdSet.has(c.id)) && !isSel && !isHov && filter !== 'done') {
+          continue;
+        }
+        const anim = chatAnim.get(c.id) || { alpha: 1, dimAlpha: 1 };
+        const wp = gridToWorld(c.gridX, c.gridY);
+        const baseP = project(wp.x, wp.y, 0);
+        const item = { kind: 'chat', id: c.id, chat: c };
+        const labelScale = viewW < 900 ? baseP.scale * 0.88 : baseP.scale;
+        const metrics = measureCityLabel(ctx, item, labelScale);
+        const st = resolveStatus(c.status);
+        const prio = isSel || isHov ? 5 : st === 'waiting' || st === 'working' ? 3 : 2;
+        labelQueue.push({
+          item,
+          depth: baseP.depth,
+          x: baseP.sx,
+          y: baseP.sy + 30 * baseP.scale,
+          metrics,
+          selected: isSel,
+          hovered: isHov,
+          alpha: anim.alpha * anim.dimAlpha,
+          prio,
+          hidden: false,
+        });
       }
-      const anim = chatAnim.get(c.id) || { alpha: 1, dimAlpha: 1 };
-      const wp = gridToWorld(c.gridX, c.gridY);
-      const baseP = project(wp.x, wp.y, 0);
-      const item = { kind: 'chat', id: c.id, chat: c };
-      const labelScale = viewW < 900 ? baseP.scale * 0.88 : baseP.scale;
-      const metrics = measureCityLabel(ctx, item, labelScale);
-      const prio = isSel || isHov ? 3 : c.status === 'waiting' ? 2 : c.status === 'working' ? 1 : 0;
-      labelQueue.push({
-        item,
-        depth: baseP.depth,
-        x: baseP.sx,
-        y: baseP.sy + 30 * baseP.scale,
-        metrics,
-        selected: isSel,
-        hovered: isHov,
-        alpha: anim.alpha * anim.dimAlpha,
-        prio,
-        hidden: false,
-      });
-    }
 
-    // Permanent buildings show compact #001 labels ONLY when hovered, selected, filter==='done', or zoomed close
-    for (let i = 0; i < buildings.length; i++) {
-      const b = buildings[i];
-      const isSel = selection?.kind === 'building' && selection.id === b.id;
-      const isHov = hoveredItem?.kind === 'building' && hoveredItem.id === b.id;
-      const showLabel = isSel || isHov || filter === 'done' || cam.zoom >= 1.18;
-      if (!showLabel) continue;
-      const anim = buildingAnim.get(b.id) || { alpha: 1 };
-      const wp = gridToWorld(b.gridX, b.gridY);
-      const baseP = project(wp.x, wp.y, 0);
-      const item = { kind: 'building', id: b.id, building: b };
-      const labelScale = viewW < 900 ? baseP.scale * 0.88 : baseP.scale;
-      const metrics = measureCityLabel(ctx, item, labelScale);
-      labelQueue.push({
-        item,
-        depth: baseP.depth,
-        x: baseP.sx,
-        y: baseP.sy + 28 * baseP.scale,
-        metrics,
-        selected: isSel,
-        hovered: isHov,
-        alpha: anim.alpha,
-        prio: isSel || isHov ? 3 : 1,
-        hidden: false,
-      });
-    }
+      // Permanent buildings: show when selected/hovered/filter==='done' or zoomed in, capped when zoomed out
+      let ambientBuildingTags = 0;
+      const maxAmbientBuildings = cam.zoom >= 1.45 ? 16 : cam.zoom >= 1.1 ? 8 : 0;
+      for (let i = 0; i < buildings.length; i++) {
+        const b = buildings[i];
+        const isSel = selection?.kind === 'building' && selection.id === b.id;
+        const isHov = hoveredItem?.kind === 'building' && hoveredItem.id === b.id;
+        const isPriority = isSel || isHov || filter === 'done';
+        if (!isPriority) {
+          if (ambientBuildingTags >= maxAmbientBuildings) continue;
+          ambientBuildingTags++;
+        }
+        const anim = buildingAnim.get(b.id) || { alpha: 1 };
+        const wp = gridToWorld(b.gridX, b.gridY);
+        const baseP = project(wp.x, wp.y, 0);
+        const item = { kind: 'building', id: b.id, building: b };
+        const labelScale = viewW < 900 ? baseP.scale * 0.88 : baseP.scale;
+        const metrics = measureCityLabel(ctx, item, labelScale);
+        labelQueue.push({
+          item,
+          depth: baseP.depth,
+          x: baseP.sx,
+          y: baseP.sy + 28 * baseP.scale,
+          metrics,
+          selected: isSel,
+          hovered: isHov,
+          alpha: anim.alpha,
+          prio: isSel || isHov ? 5 : 1,
+          hidden: false,
+        });
+      }
 
-    // 5-pass 2D collision relaxation + viewport clamping so labels NEVER overlap even on 768px narrow screens
-    labelQueue.sort((a, b) => b.depth - a.depth);
-    for (let pass = 0; pass < 5; pass++) {
+      // Priority-sorted greedy screen-space AABB collision culling (6px padding) — zero overlapping piles
+      labelQueue.sort((a, b) => (b.prio !== a.prio ? b.prio - a.prio : a.depth - b.depth));
       for (let i = 0; i < labelQueue.length; i++) {
-        const a = labelQueue[i];
-        for (let j = i + 1; j < labelQueue.length; j++) {
-          const b = labelQueue[j];
-          const overlapX = (a.metrics.w + b.metrics.w) * 0.5 + 6 - Math.abs(a.x - b.x);
-          const overlapY = (a.metrics.h + b.metrics.h) * 0.5 + 4 - Math.abs(a.y - b.y);
+        const cur = labelQueue[i];
+        const halfW = cur.metrics.w * 0.5 + 8;
+        cur.x = Math.max(halfW, Math.min(viewW - halfW, cur.x));
+        cur.y = Math.max(72, Math.min(viewH - 68, cur.y));
+        for (let j = 0; j < i; j++) {
+          const prev = labelQueue[j];
+          if (prev.hidden) continue;
+          const overlapX = (cur.metrics.w + prev.metrics.w) * 0.5 + 6 - Math.abs(cur.x - prev.x);
+          const overlapY = (cur.metrics.h + prev.metrics.h) * 0.5 + 6 - Math.abs(cur.y - prev.y);
           if (overlapX > 0 && overlapY > 0) {
-            if (overlapY <= overlapX * 0.7) {
-              const pushY = overlapY * 0.54;
-              if (a.y <= b.y) {
-                a.y -= pushY;
-                b.y += pushY;
-              } else {
-                a.y += pushY;
-                b.y -= pushY;
-              }
-            } else {
-              const pushX = overlapX * 0.52;
-              if (a.x <= b.x) {
-                a.x -= pushX;
-                b.x += pushX;
-              } else {
-                a.x += pushX;
-                b.x -= pushX;
-              }
-            }
+            cur.hidden = true;
+            break;
           }
         }
-        // Keep labels inside canvas safe bounds (below 58px top bar, above 64px bottom controls)
-        const halfW = a.metrics.w * 0.5 + 8;
-        a.x = Math.max(halfW, Math.min(viewW - halfW, a.x));
-        a.y = Math.max(72, Math.min(viewH - 68, a.y));
       }
-    }
 
-    // Final safety cull on very tight viewports: if a low-priority sleeping label still touches a higher-priority label, hide the low-priority duplicate
-    for (let i = 0; i < labelQueue.length; i++) {
-      const a = labelQueue[i];
-      if (a.hidden) continue;
-      for (let j = i + 1; j < labelQueue.length; j++) {
-        const b = labelQueue[j];
-        if (b.hidden) continue;
-        const overlapX = (a.metrics.w + b.metrics.w) * 0.5 + 2 - Math.abs(a.x - b.x);
-        const overlapY = (a.metrics.h + b.metrics.h) * 0.5 + 2 - Math.abs(a.y - b.y);
-        if (overlapX > 0 && overlapY > 0) {
-          if (a.prio < b.prio) a.hidden = true;
-          else if (b.prio < a.prio) b.hidden = true;
-          else if (a.item.kind === 'chat' && a.item.chat.status === 'sleeping') a.hidden = true;
-          else if (b.item.kind === 'chat' && b.item.chat.status === 'sleeping') b.hidden = true;
-        }
+      for (let i = labelQueue.length - 1; i >= 0; i--) {
+        const np = labelQueue[i];
+        if (np.hidden) continue;
+        drawCityLabelHUD(
+          ctx,
+          np.x,
+          np.y,
+          np.metrics,
+          np.item,
+          { selected: np.selected, hovered: np.hovered, alpha: np.alpha },
+          elapsed,
+          reducedMotion
+        );
       }
-    }
-
-    for (let i = 0; i < labelQueue.length; i++) {
-      const np = labelQueue[i];
-      if (np.hidden) continue;
-      drawCityLabelHUD(
-        ctx,
-        np.x,
-        np.y,
-        np.metrics,
-        np.item,
-        { selected: np.selected, hovered: np.hovered, alpha: np.alpha },
-        elapsed,
-        reducedMotion
-      );
     }
 
     // 8. Pre-baked Twilight Vignette (single drawImage, zero gradient alloc)
@@ -1633,6 +2209,11 @@ export function createCityScene(canvas, callbacks = {}) {
     canvas.removeEventListener('pointercancel', handlePointerUp);
     canvas.removeEventListener('pointerleave', handlePointerLeave);
     canvas.removeEventListener('wheel', handleWheel);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
+    }
     if (motionQuery) {
       if (motionQuery.removeEventListener) motionQuery.removeEventListener('change', onMotionChange);
       else if (motionQuery.removeListener) motionQuery.removeListener(onMotionChange);
@@ -1641,6 +2222,7 @@ export function createCityScene(canvas, callbacks = {}) {
 
   return {
     setState,
+    setHQ,
     setFilter,
     setSelected,
     zoomIn,
@@ -1649,6 +2231,10 @@ export function createCityScene(canvas, callbacks = {}) {
     toggleTilt,
     setTilt,
     resetView,
+    focusHQ,
+    focusHQZone,
+    exitHQInterior,
+    isHQFocused,
     focusItem,
     triggerCelebration,
     resize,
