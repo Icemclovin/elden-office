@@ -2973,40 +2973,90 @@ export function drawCityLabelHUD(ctx, cx, cy, metrics, item, state, time, reduce
 // ---------------------------------------------------------------------------
 // 3D Stylized AI Agent Figures (Hard-Hat Builders, Uitvoerder, Lounge, Sleep)
 // ---------------------------------------------------------------------------
+const SHORT_ROLE_MAP = {
+  backend_engineer: 'BE',
+  backend: 'BE',
+  frontend_engineer: 'FE',
+  frontend: 'FE',
+  devops: 'Ops',
+  'devops engineer': 'Ops',
+  cybersecurity: 'Sec',
+  security: 'Sec',
+  tester: 'QA',
+  qa: 'QA',
+  ui_designer: 'UI',
+  'ui designer': 'UI',
+  team_lead: 'Lead',
+  teamleider: 'Lead',
+  project_manager: 'PM',
+  projectmanager: 'PM',
+  uitvoerder: 'Dir',
+  foreman: 'Dir',
+  architect: 'Arch',
+  bouwer: 'Dev',
+  builder: 'Dev',
+  developer: 'Dev',
+};
+
+export function formatCompactAgentTag(agent, fallbackRole = 'Dev') {
+  const rawRole = String(agent?.specialty || agent?.specialtyLabel || agent?.role || fallbackRole).trim();
+  const roleKey = rawRole.toLowerCase();
+  let shortRole = SHORT_ROLE_MAP[roleKey];
+  if (!shortRole) {
+    for (const [k, v] of Object.entries(SHORT_ROLE_MAP)) {
+      if (roleKey.includes(k)) {
+        shortRole = v;
+        break;
+      }
+    }
+  }
+  if (!shortRole) {
+    const first = rawRole.split(/[\s/_-]+/)[0] || fallbackRole;
+    shortRole = first.length > 6 ? first.slice(0, 5) : first;
+  }
+
+  let rawName = String(agent?.name || 'Agent').trim();
+  rawName = rawName.replace(/\s*\(.*?\)\s*/g, ' ').replace(/\s+code$/i, '').trim();
+  if (/^antigravity$/i.test(rawName)) rawName = 'Agy';
+  const shortName = rawName.length > 11 ? `${rawName.slice(0, 10)}…` : rawName || 'Agent';
+  return `${shortRole} · ${shortName}`;
+}
+
 function drawCompactTag(ctx, cx, cy, text, accentColor, bgColor, scale = 1, alpha = 1) {
   if (alpha <= 0.03 || scale <= 0.18) return;
-  const fs = Math.max(8.5, Math.min(12.5, 9.8 * scale));
+  const fs = Math.max(8, Math.min(11, 9.2 * scale));
   ctx.save();
   ctx.globalAlpha *= alpha;
   ctx.font = `600 ${fs.toFixed(1)}px ${FONT_UI}`;
-  const label = truncateText(ctx, text, 148 * Math.min(1.15, Math.max(0.8, scale)));
+  const label = truncateText(ctx, text, 108 * Math.min(1.12, Math.max(0.8, scale)));
   const tw = Math.ceil(ctx.measureText(label).width);
-  const padX = Math.max(5, 6.5 * scale);
-  const w = tw + padX * 2 + 8;
-  const h = Math.max(15, 17 * scale);
+  const padX = Math.max(4, 5 * scale);
+  const dotR = Math.max(1.8, 2.1 * Math.min(1.05, scale));
+  const w = tw + padX * 2 + 6;
+  const h = Math.max(13, 14.5 * scale);
   const left = cx - w * 0.5;
   const top = cy - h * 0.5;
 
   ctx.fillStyle = 'rgba(4, 7, 13, 0.72)';
-  drawRoundedRectPath(ctx, left + 1, top + 1.5, w, h, 4);
+  drawRoundedRectPath(ctx, left + 1, top + 1.2, w, h, 3.5);
   ctx.fill();
 
   ctx.fillStyle = bgColor || 'rgba(11, 17, 28, 0.94)';
-  drawRoundedRectPath(ctx, left, top, w, h, 4);
+  drawRoundedRectPath(ctx, left, top, w, h, 3.5);
   ctx.fill();
   ctx.strokeStyle = accentColor;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 0.95;
   ctx.stroke();
 
   ctx.fillStyle = accentColor;
   ctx.beginPath();
-  ctx.arc(left + padX + 1.5, cy, Math.max(2, 2.5 * Math.min(1.1, scale)), 0, Math.PI * 2);
+  ctx.arc(left + padX + 1.2, cy, dotR, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = '#f8fafc';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, left + padX + 7, cy + 0.3);
+  ctx.fillText(label, left + padX + 5.5, cy + 0.25);
   ctx.restore();
 }
 
@@ -3355,17 +3405,15 @@ export function drawSiteAgents3D(ctx, project, wx, wy, agents, time, reducedMoti
       assets
     );
     if (showBadges && headPos && headPos.scale >= 0.42) {
-      const rolePart = ag.specialtyLabel || ag.role || '';
-      const suffix = rolePart ? ` · ${rolePart}` : ag.task ? ` · ${ag.task}` : '';
       const accent = resolveAgentColor(ag, seed);
       drawCompactTag(
         ctx,
         headPos.sx,
-        headPos.sy - 17 * headPos.scale,
-        `${ag.name || 'Agent'}${suffix}`,
+        headPos.sy - 15 * headPos.scale,
+        formatCompactAgentTag(ag, 'Dev'),
         accent,
         'rgba(12, 18, 30, 0.92)',
-        Math.min(1.05, headPos.scale * 0.95),
+        Math.min(0.98, headPos.scale * 0.9),
         0.96
       );
     }
@@ -3414,8 +3462,8 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
 
   const hx = 47;
   const hy = 43;
-  const ihx = 150;
-  const ihy = 110;
+  const ihx = 230;
+  const ihy = 160;
   const wallH = 88;
   const floorZ = 5.5;
 
@@ -3440,8 +3488,8 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
   }
 
   // Granite Podium Base (expands cleanly with interior studio floorplate when cutaway opens)
-  const podHx = cutaway > 0.25 ? ihx + 4 : hx + 2;
-  const podHy = cutaway > 0.25 ? ihy + 4 : hy + 2;
+  const podHx = cutaway > 0.25 ? ihx + 5 : hx + 2;
+  const podHy = cutaway > 0.25 ? ihy + 5 : hy + 2;
   drawExtrudedBox3D(
     ctx,
     project,
@@ -3455,11 +3503,100 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
     'rgba(56, 189, 248, 0.36)'
   );
 
-  // 2. Spacious 5-Wing 3D Perspective RPG Office Interior (300 x 220 units with wide open atrium)
+  // 2. Spacious Modern 3D Perspective Office Interior (460 x 320 units with wide open atrium & glass partitions)
   if (cutaway > 0.04) {
     ctx.save();
     ctx.globalAlpha *= Math.min(1, cutaway * 1.4);
-    const uiS = Math.min(3.2, Math.max(0.85, s * 0.52));
+    const uiS = Math.min(3.0, Math.max(0.75, s * 0.48));
+
+    // Compact local furniture helpers (reusing fillQuad & drawExtrudedBox3D)
+    const drawGlassPartition = (x0, y0, x1, y1, h = 14) => {
+      fillQuad(
+        ctx,
+        project(wx + x0, wy + y0, floorZ + 0.4),
+        project(wx + x1, wy + y1, floorZ + 0.4),
+        project(wx + x1, wy + y1, floorZ + h),
+        project(wx + x0, wy + y0, floorZ + h),
+        'rgba(125, 211, 252, 0.11)',
+        'rgba(186, 230, 253, 0.36)',
+        Math.max(0.8, 1.0 * uiS)
+      );
+      const t0 = project(wx + x0, wy + y0, floorZ + h);
+      const t1 = project(wx + x1, wy + y1, floorZ + h);
+      ctx.strokeStyle = 'rgba(203, 213, 225, 0.55)';
+      ctx.lineWidth = Math.max(1.0, 1.4 * uiS);
+      ctx.beginPath();
+      ctx.moveTo(t0.sx, t0.sy);
+      ctx.lineTo(t1.sx, t1.sy);
+      ctx.stroke();
+    };
+
+    const drawChair = (cx, cy, seatCol = '#334155') => {
+      drawExtrudedBox3D(
+        ctx,
+        project,
+        wx + cx,
+        wy + cy,
+        4.2,
+        4.2,
+        floorZ + 0.4,
+        floorZ + 5.0,
+        { south: '#1e293b', north: '#0f172a', east: '#172033', west: '#0d1526', top: seatCol },
+        'rgba(148, 163, 184, 0.26)'
+      );
+    };
+
+    const drawWorkstation = (dx, dy, screenCol = 'rgba(56, 189, 248, 0.82)') => {
+      drawExtrudedBox3D(
+        ctx,
+        project,
+        wx + dx,
+        wy + dy,
+        16,
+        7.0,
+        floorZ + 0.4,
+        floorZ + 8.0,
+        { south: '#2c3a4f', north: '#1a2436', east: '#233044', west: '#161f2e', top: '#3b4d68' },
+        'rgba(148, 163, 184, 0.38)'
+      );
+      // Dual widescreen monitors
+      for (const mx of [-5.8, 5.8]) {
+        fillQuad(
+          ctx,
+          project(wx + dx + mx - 4.6, wy + dy - 2.8, floorZ + 8.4),
+          project(wx + dx + mx + 4.6, wy + dy - 2.8, floorZ + 8.4),
+          project(wx + dx + mx + 4.6, wy + dy - 2.8, floorZ + 13.4),
+          project(wx + dx + mx - 4.6, wy + dy - 2.8, floorZ + 13.4),
+          screenCol,
+          '#e0f2fe',
+          0.75
+        );
+      }
+      drawChair(dx, dy + 12.5);
+    };
+
+    const drawPlanter = (px, py, blossom = false) => {
+      drawExtrudedBox3D(
+        ctx,
+        project,
+        wx + px,
+        wy + py,
+        4.6,
+        4.6,
+        floorZ + 0.4,
+        floorZ + 5.0,
+        { south: '#475569', north: '#334155', east: '#3e4c5e', west: '#2a3545', top: '#3f2e21' }
+      );
+      const bTop = project(wx + px, wy + py, floorZ + 11.8);
+      ctx.fillStyle = '#34d399';
+      ctx.beginPath();
+      ctx.ellipse(bTop.sx, bTop.sy, 6.2 * uiS, 4.3 * uiS, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = blossom ? '#f9a8d4' : '#6ee7b7';
+      ctx.beginPath();
+      ctx.ellipse(bTop.sx + 2.0 * uiS, bTop.sy - 1.5 * uiS, 2.8 * uiS, 2.0 * uiS, 0, 0, Math.PI * 2);
+      ctx.fill();
+    };
 
     // Base dark architectural tiled atrium & corridor floor
     fillQuad(
@@ -3469,41 +3606,63 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
       project(wx + ihx - 2, wy + ihy - 2, floorZ + 0.2),
       project(wx - ihx + 2, wy + ihy - 2, floorZ + 0.2),
       '#131c2b',
-      'rgba(148, 163, 184, 0.32)',
+      'rgba(148, 163, 184, 0.34)',
       1.2
     );
 
+    // Wide architectural walkway stone runners (East-West boulevard & North-South atrium spine)
+    fillQuad(
+      ctx,
+      project(wx - ihx + 6, wy - 16, floorZ + 0.26),
+      project(wx + ihx - 6, wy - 16, floorZ + 0.26),
+      project(wx + ihx - 6, wy + 20, floorZ + 0.26),
+      project(wx - ihx + 6, wy + 20, floorZ + 0.26),
+      'rgba(30, 41, 59, 0.62)'
+    );
+    fillQuad(
+      ctx,
+      project(wx - 20, wy - ihy + 6, floorZ + 0.26),
+      project(wx + 20, wy - ihy + 6, floorZ + 0.26),
+      project(wx + 20, wy + 24, floorZ + 0.26),
+      project(wx - 20, wy + 24, floorZ + 0.26),
+      'rgba(30, 41, 59, 0.62)'
+    );
+
     // Architectural tiled floor grid across spacious atrium & corridors
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.075)';
-    ctx.lineWidth = Math.max(0.5, 0.7 * uiS);
-    for (let g = -140; g <= 140; g += 20) {
-      const a = project(wx + g, wy - ihy + 3, floorZ + 0.25);
-      const b = project(wx + g, wy + ihy - 3, floorZ + 0.25);
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.068)';
+    ctx.lineWidth = Math.max(0.5, 0.65 * uiS);
+    for (let g = -220; g <= 220; g += 20) {
+      const a = project(wx + g, wy - ihy + 3, floorZ + 0.28);
+      const b = project(wx + g, wy + ihy - 3, floorZ + 0.28);
       ctx.beginPath();
       ctx.moveTo(a.sx, a.sy);
       ctx.lineTo(b.sx, b.sy);
       ctx.stroke();
     }
-    for (let g = -100; g <= 100; g += 20) {
-      const a = project(wx - ihx + 3, wy + g, floorZ + 0.25);
-      const b = project(wx + ihx - 3, wy + g, floorZ + 0.25);
+    for (let g = -150; g <= 150; g += 20) {
+      const a = project(wx - ihx + 3, wy + g, floorZ + 0.28);
+      const b = project(wx + ihx - 3, wy + g, floorZ + 0.28);
       ctx.beginPath();
       ctx.moveTo(a.sx, a.sy);
       ctx.lineTo(b.sx, b.sy);
       ctx.stroke();
     }
 
-    // Subtle glowing central atrium medallion at (0, -2)
-    const atrC = project(wx, wy - 2, floorZ + 0.35);
-    stampSprite(ctx, assets.glowCyan, atrC.sx, atrC.sy, 32 * uiS, 20 * uiS, 0.16, true);
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.24)';
+    // Central Atrium Medallion at (0, 2) + 4 Corner Atrium Planters
+    const atrC = project(wx, wy + 2, floorZ + 0.35);
+    stampSprite(ctx, assets.glowCyan, atrC.sx, atrC.sy, 38 * uiS, 22 * uiS, 0.16, true);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.26)';
     ctx.lineWidth = Math.max(1, 1.3 * uiS);
     ctx.beginPath();
-    ctx.ellipse(atrC.sx, atrC.sy, 16 * uiS, 10 * uiS, 0, 0, Math.PI * 2);
+    ctx.ellipse(atrC.sx, atrC.sy, 18 * uiS, 11 * uiS, 0, 0, Math.PI * 2);
     ctx.stroke();
+    drawPlanter(-36, -12, true);
+    drawPlanter(36, -12, false);
+    drawPlanter(-36, 16, false);
+    drawPlanter(36, 16, true);
 
     // Back architectural walls (North, West & East cutaway walls)
-    const backWallH = floorZ + 28;
+    const backWallH = floorZ + 30;
     fillQuad(
       ctx,
       project(wx - ihx + 2, wy - ihy + 2, floorZ),
@@ -3534,58 +3693,69 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
       'rgba(148, 163, 184, 0.24)',
       1.0
     );
-    // Warm architectural wood wainscot strip along North wall
+    // Warm architectural walnut wainscot strip along North wall
     fillQuad(
       ctx,
       project(wx - ihx + 2, wy - ihy + 2.2, floorZ),
       project(wx + ihx - 2, wy - ihy + 2.2, floorZ),
-      project(wx + ihx - 2, wy - ihy + 2.2, floorZ + 8),
-      project(wx - ihx + 2, wy - ihy + 2.2, floorZ + 8),
+      project(wx + ihx - 2, wy - ihy + 2.2, floorZ + 8.5),
+      project(wx - ihx + 2, wy - ihy + 2.2, floorZ + 8.5),
       '#463122'
     );
 
     // =========================================================================
-    // WING 1: Engineering & War Room (North-West: x -144..-16, y -104..-26)
+    // WING 1: Engineering Open-Plan & Conference Room (NW: x -218..-24, y -148..-20)
     // =========================================================================
     const isWarHov = hoveredKind === 'hq_zone' && hoveredId === 'hq-zone-war-room';
     const isWarSel = selectedKind === 'hq_zone' && selectedId === 'hq-zone-war-room';
     fillQuad(
       ctx,
-      project(wx - 144, wy - 104, floorZ + 0.35),
-      project(wx - 16, wy - 104, floorZ + 0.35),
-      project(wx - 16, wy - 26, floorZ + 0.35),
-      project(wx - 144, wy - 26, floorZ + 0.35),
+      project(wx - 218, wy - 148, floorZ + 0.35),
+      project(wx - 24, wy - 148, floorZ + 0.35),
+      project(wx - 24, wy - 20, floorZ + 0.35),
+      project(wx - 218, wy - 20, floorZ + 0.35),
       isWarHov ? 'rgba(34, 48, 84, 0.92)' : 'rgba(22, 33, 58, 0.88)',
-      isWarSel ? '#38bdf8' : isWarHov ? '#93c5fd' : 'rgba(56, 189, 248, 0.44)',
+      isWarSel ? '#38bdf8' : isWarHov ? '#93c5fd' : 'rgba(56, 189, 248, 0.42)',
       Math.max(1.1, (isWarHov || isWarSel ? 2.2 : 1.1) * uiS)
+    );
+    // Conference room subtle darker carpet inlay (x -88..-28, y -142..-26)
+    fillQuad(
+      ctx,
+      project(wx - 88, wy - 142, floorZ + 0.38),
+      project(wx - 28, wy - 142, floorZ + 0.38),
+      project(wx - 28, wy - 26, floorZ + 0.38),
+      project(wx - 88, wy - 26, floorZ + 0.38),
+      'rgba(30, 44, 72, 0.85)',
+      'rgba(125, 211, 252, 0.28)',
+      0.9
     );
 
     // Wall-mounted Holo City-Status Display (hq_holo) on War Room North Wall
     const isHoloSel = selectedKind === 'hq_holo';
     const isHoloHov = hoveredKind === 'hq_holo';
-    const holoZ0 = floorZ + 10;
-    const holoZ1 = floorZ + 25.5;
-    const holoCenter = project(wx - 80, wy - ihy + 2.8, (holoZ0 + holoZ1) * 0.5);
-    stampSprite(ctx, assets.glowCyan, holoCenter.sx, holoCenter.sy, 38 * uiS, 18 * uiS, isHoloHov ? 0.74 : 0.46, true);
+    const holoZ0 = floorZ + 10.5;
+    const holoZ1 = floorZ + 26.5;
+    const holoCenter = project(wx - 154, wy - ihy + 2.8, (holoZ0 + holoZ1) * 0.5);
+    stampSprite(ctx, assets.glowCyan, holoCenter.sx, holoCenter.sy, 42 * uiS, 20 * uiS, isHoloHov ? 0.74 : 0.46, true);
     fillQuad(
       ctx,
-      project(wx - 108, wy - ihy + 2.6, holoZ0),
-      project(wx - 52, wy - ihy + 2.6, holoZ0),
-      project(wx - 52, wy - ihy + 2.6, holoZ1),
-      project(wx - 108, wy - ihy + 2.6, holoZ1),
+      project(wx - 190, wy - ihy + 2.6, holoZ0),
+      project(wx - 118, wy - ihy + 2.6, holoZ0),
+      project(wx - 118, wy - ihy + 2.6, holoZ1),
+      project(wx - 190, wy - ihy + 2.6, holoZ1),
       'rgba(8, 22, 38, 0.96)',
       isHoloSel ? '#38bdf8' : isHoloHov ? '#e0f2fe' : 'rgba(56, 189, 248, 0.88)',
       Math.max(1.3, (isHoloHov || isHoloSel ? 2.4 : 1.4) * uiS)
     );
-    const barHeights = [6.0, 9.8, 7.6, 11.8, 8.6, 5.8, 10.4, 7.8, 9.2, 6.6];
+    const barHeights = [6.2, 10.4, 7.8, 12.2, 9.0, 6.4, 11.0, 8.2, 9.6, 7.0, 10.8, 7.6];
     for (let bi = 0; bi < barHeights.length; bi++) {
-      const bx0 = wx - 102 + bi * 4.8;
+      const bx0 = wx - 184 + bi * 5.4;
       const bh = barHeights[bi] * (0.85 + 0.15 * Math.sin(t * 2.2 + bi));
       fillQuad(
         ctx,
         project(bx0, wy - ihy + 3.0, holoZ0 + 1.5),
-        project(bx0 + 3.0, wy - ihy + 3.0, holoZ0 + 1.5),
-        project(bx0 + 3.0, wy - ihy + 3.0, holoZ0 + 1.5 + bh),
+        project(bx0 + 3.2, wy - ihy + 3.0, holoZ0 + 1.5),
+        project(bx0 + 3.2, wy - ihy + 3.0, holoZ0 + 1.5 + bh),
         project(bx0, wy - ihy + 3.0, holoZ0 + 1.5 + bh),
         bi % 2 === 0 ? 'rgba(56, 189, 248, 0.88)' : 'rgba(52, 211, 153, 0.88)'
       );
@@ -3600,85 +3770,103 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
         sx: holoCenter.sx,
         topY: holoCenter.sy - 18 * uiS,
         botY: holoCenter.sy + 18 * uiS,
-        rx: 34 * uiS,
+        rx: 38 * uiS,
       });
     }
 
-    // 3 Spaced Backend / Frontend Engineering Workstations in War Room
-    for (const wsX of [wx - 118, wx - 80, wx - 42]) {
-      drawExtrudedBox3D(
-        ctx,
-        project,
-        wsX,
-        wy - 62,
-        13,
-        6.5,
-        floorZ + 0.4,
-        floorZ + 8.2,
-        { south: '#25334a', north: '#162033', east: '#1e2b40', west: '#131b2c', top: '#31435e' },
-        'rgba(56, 189, 248, 0.46)'
-      );
-      fillQuad(
-        ctx,
-        project(wsX - 9.5, wy - 64.5, floorZ + 8.6),
-        project(wsX + 9.5, wy - 64.5, floorZ + 8.6),
-        project(wsX + 9.5, wy - 64.5, floorZ + 13.8),
-        project(wsX - 9.5, wy - 64.5, floorZ + 13.8),
-        'rgba(56, 189, 248, 0.80)',
-        '#bae6fd',
-        0.8
-      );
+    // Conference Room Wall Presentation Screen
+    fillQuad(
+      ctx,
+      project(wx - 76, wy - ihy + 2.6, floorZ + 11),
+      project(wx - 40, wy - ihy + 2.6, floorZ + 11),
+      project(wx - 40, wy - ihy + 2.6, floorZ + 24),
+      project(wx - 76, wy - ihy + 2.6, floorZ + 24),
+      'rgba(15, 23, 42, 0.94)',
+      'rgba(148, 163, 184, 0.65)',
+      1.1
+    );
+
+    // 4 Open-Plan Engineering Workstations (2x2 spaced cluster)
+    drawWorkstation(-184, -116, 'rgba(56, 189, 248, 0.82)');
+    drawWorkstation(-132, -116, 'rgba(129, 140, 248, 0.82)');
+    drawWorkstation(-184, -66, 'rgba(52, 211, 153, 0.80)');
+    drawWorkstation(-132, -66, 'rgba(56, 189, 248, 0.82)');
+    drawPlanter(-208, -138, false);
+
+    // Glass-Walled Conference Room Table + 6 Meeting Chairs
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx - 58,
+      wy - 84,
+      11.5,
+      28,
+      floorZ + 0.4,
+      floorZ + 7.6,
+      { south: '#593a26', north: '#3b2517', east: '#4a301e', west: '#332014', top: '#785035' },
+      'rgba(253, 230, 138, 0.30)'
+    );
+    for (const cy of [-104, -84, -64]) {
+      drawChair(-76, cy, '#475569');
+      drawChair(-40, cy, '#475569');
     }
+    // Conference room internal glass divider + Wing 1 glass partitions with wide doorways
+    drawGlassPartition(-88, -142, -88, -98, 14);
+    drawGlassPartition(-88, -68, -88, -26, 14);
+    drawGlassPartition(-218, -20, -142, -20, 13);
+    drawGlassPartition(-100, -20, -24, -20, 13);
+    drawGlassPartition(-24, -148, -24, -96, 13);
+    drawGlassPartition(-24, -64, -24, -20, 13);
 
     if (outHitboxes && cutaway > 0.35) {
-      const wrC = project(wx - 80, wy - 65, floorZ + 4);
+      const wrC = project(wx - 120, wy - 84, floorZ + 4);
       outHitboxes.push({
         type: 'hq_zone',
         kind: 'hq_zone',
         zone: 'war_room',
         id: 'hq-zone-war-room',
-        label: 'Engineering & War Room',
+        label: 'Engineering & Meeting Room',
         depth: wrC.depth - 20,
         sx: wrC.sx,
-        topY: wrC.sy - 34 * uiS,
-        botY: wrC.sy + 32 * uiS,
-        rx: 62 * uiS,
+        topY: wrC.sy - 46 * uiS,
+        botY: wrC.sy + 44 * uiS,
+        rx: 88 * uiS,
       });
     }
 
     // =========================================================================
-    // WING 2: Cybersecurity SOC & DevOps/QA Lab (North-East: x 16..144, y -104..-26)
+    // WING 2: Server Room, Security SOC & QA Lab (NE: x 24..218, y -148..-20)
     // =========================================================================
     const isLabHov = hoveredKind === 'hq_zone' && hoveredId === 'hq-zone-lab';
     const isLabSel = selectedKind === 'hq_zone' && selectedId === 'hq-zone-lab';
     fillQuad(
       ctx,
-      project(wx + 16, wy - 104, floorZ + 0.35),
-      project(wx + 144, wy - 104, floorZ + 0.35),
-      project(wx + 144, wy - 26, floorZ + 0.35),
-      project(wx + 16, wy - 26, floorZ + 0.35),
+      project(wx + 24, wy - 148, floorZ + 0.35),
+      project(wx + 218, wy - 148, floorZ + 0.35),
+      project(wx + 218, wy - 20, floorZ + 0.35),
+      project(wx + 24, wy - 20, floorZ + 0.35),
       isLabHov ? 'rgba(20, 52, 64, 0.92)' : 'rgba(15, 36, 46, 0.88)',
-      isLabSel ? '#2dd4bf' : isLabHov ? '#5eead4' : 'rgba(45, 212, 191, 0.44)',
+      isLabSel ? '#2dd4bf' : isLabHov ? '#5eead4' : 'rgba(45, 212, 191, 0.42)',
       Math.max(1.1, (isLabHov || isLabSel ? 2.2 : 1.1) * uiS)
     );
 
-    // 4 Spaciously Arranged Glowing LED Server Racks along North Wall
-    for (let ri = 0; ri < 4; ri++) {
-      const rx = wx + 38 + ri * 28;
+    // 6 Glowing LED Server Racks along North Wall
+    for (let ri = 0; ri < 6; ri++) {
+      const rx = wx + 46 + ri * 28;
       drawExtrudedBox3D(
         ctx,
         project,
         rx,
-        wy - 92,
+        wy - 132,
         7.5,
         6.5,
         floorZ + 0.4,
-        floorZ + 18.5,
+        floorZ + 19.5,
         { south: '#1e293b', north: '#0f172a', east: '#172033', west: '#0d1526', top: '#334155' },
         'rgba(45, 212, 191, 0.44)'
       );
       for (let li = 0; li < 3; li++) {
-        const lp = project(rx - 3.2 + li * 3.2, wy - 85.2, floorZ + 14.5 - (ri % 2) * 2.5);
+        const lp = project(rx - 3.2 + li * 3.2, wy - 125.2, floorZ + 15.2 - (ri % 2) * 2.5);
         const blink = reducedMotion ? 1 : Math.sin(t * 4.2 + ri * 1.7 + li * 2.1) > -0.2 ? 1 : 0.25;
         ctx.fillStyle =
           li === 0
@@ -3691,78 +3879,64 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
         ctx.fill();
       }
     }
+    // Glass server aisle divider
+    drawGlassPartition(30, -112, 104, -112, 14);
+    drawGlassPartition(136, -112, 212, -112, 14);
 
-    // 2 Spaced Cybersecurity SOC & QA Diagnostic Consoles
-    for (let ci = 0; ci < 2; ci++) {
-      const cx = wx + (ci === 0 ? 54 : 104);
-      const screenCol = ci === 0 ? 'rgba(248, 113, 113, 0.78)' : 'rgba(45, 212, 191, 0.80)';
-      const borderCol = ci === 0 ? 'rgba(248, 113, 113, 0.55)' : 'rgba(45, 212, 191, 0.55)';
-      drawExtrudedBox3D(
-        ctx,
-        project,
-        cx,
-        wy - 56,
-        16,
-        6.8,
-        floorZ + 0.4,
-        floorZ + 8.4,
-        { south: '#163840', north: '#0e242a', east: '#122f36', west: '#0b1e24', top: '#1e4d57' },
-        borderCol
-      );
-      fillQuad(
-        ctx,
-        project(cx - 11, wy - 58.8, floorZ + 8.8),
-        project(cx + 11, wy - 58.8, floorZ + 8.8),
-        project(cx + 11, wy - 58.8, floorZ + 14.2),
-        project(cx - 11, wy - 58.8, floorZ + 14.2),
-        screenCol,
-        '#e2e8f0',
-        0.85
-      );
-    }
-    const labGlow = project(wx + 80, wy - 56, floorZ + 11);
-    stampSprite(ctx, assets.glowEmerald, labGlow.sx, labGlow.sy, 32 * uiS, 16 * uiS, 0.36, true);
+    // 2 Wide SOC & QA Diagnostic Workbenches + Chairs
+    drawWorkstation(78, -74, 'rgba(248, 113, 113, 0.78)');
+    drawWorkstation(162, -74, 'rgba(45, 212, 191, 0.82)');
+    drawPlanter(208, -32, false);
+
+    const labGlow = project(wx + 120, wy - 74, floorZ + 11);
+    stampSprite(ctx, assets.glowEmerald, labGlow.sx, labGlow.sy, 38 * uiS, 18 * uiS, 0.34, true);
+
+    // Wing 2 glass perimeter partitions with wide doorways
+    drawGlassPartition(24, -20, 98, -20, 13);
+    drawGlassPartition(142, -20, 218, -20, 13);
+    drawGlassPartition(24, -148, 24, -96, 13);
+    drawGlassPartition(24, -64, 24, -20, 13);
 
     if (outHitboxes && cutaway > 0.35) {
-      const lbC = project(wx + 80, wy - 65, floorZ + 4);
+      const lbC = project(wx + 120, wy - 84, floorZ + 4);
       outHitboxes.push({
         type: 'hq_zone',
         kind: 'hq_zone',
         zone: 'lab',
         id: 'hq-zone-lab',
-        label: 'Security SOC & QA Lab',
+        label: 'Server & QA Security Lab',
         depth: lbC.depth - 20,
         sx: lbC.sx,
-        topY: lbC.sy - 34 * uiS,
-        botY: lbC.sy + 32 * uiS,
-        rx: 62 * uiS,
+        topY: lbC.sy - 46 * uiS,
+        botY: lbC.sy + 44 * uiS,
+        rx: 88 * uiS,
       });
     }
 
     // =========================================================================
-    // WING 3: Slaapcapsules (West Wing: x -144..-54, y -14..100)
+    // WING 3: Focus & Slaapcapsules (SW: x -218..-76, y 24..148)
     // =========================================================================
     const isSleepZoneHov = hoveredKind === 'hq_zone' && hoveredId === 'hq-zone-sleep-pods';
     const isSleepZoneSel = selectedKind === 'hq_zone' && selectedId === 'hq-zone-sleep-pods';
     fillQuad(
       ctx,
-      project(wx - 144, wy - 14, floorZ + 0.35),
-      project(wx - 54, wy - 14, floorZ + 0.35),
-      project(wx - 54, wy + 100, floorZ + 0.35),
-      project(wx - 144, wy + 100, floorZ + 0.35),
-      isSleepZoneHov ? 'rgba(38, 52, 86, 0.92)' : 'rgba(24, 34, 58, 0.88)',
-      isSleepZoneSel ? '#818cf8' : isSleepZoneHov ? '#a5b4fc' : 'rgba(129, 140, 248, 0.44)',
+      project(wx - 218, wy + 24, floorZ + 0.35),
+      project(wx - 76, wy + 24, floorZ + 0.35),
+      project(wx - 76, wy + 148, floorZ + 0.35),
+      project(wx - 218, wy + 148, floorZ + 0.35),
+      isSleepZoneHov ? 'rgba(38, 52, 86, 0.92)' : 'rgba(22, 32, 56, 0.88)',
+      isSleepZoneSel ? '#818cf8' : isSleepZoneHov ? '#a5b4fc' : 'rgba(129, 140, 248, 0.42)',
       Math.max(1.1, (isSleepZoneHov || isSleepZoneSel ? 2.2 : 1.1) * uiS)
     );
 
-    // 6 Generous Glowing Sleep Pods with Wide Central Walkway
+    // 6 Spacious Glowing Focus / Sleep Pods with Wide Central Aisle (x = -147)
     const podSlots = [
-      { x: wx - 124, y: wy + 8 },
-      { x: wx - 74, y: wy + 8 },
-      { x: wx - 124, y: wy + 44 },
-      { x: wx - 74, y: wy + 44 },
-      { x: wx - 124, y: wy + 80 },
-      { x: wx - 74, y: wy + 80 },
+      { x: wx - 188, y: wy + 48 },
+      { x: wx - 106, y: wy + 48 },
+      { x: wx - 188, y: wy + 88 },
+      { x: wx - 106, y: wy + 88 },
+      { x: wx - 188, y: wy + 128 },
+      { x: wx - 106, y: wy + 128 },
     ];
     for (let i = 0; i < podSlots.length; i++) {
       const ps = podSlots[i];
@@ -3771,171 +3945,197 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
         project,
         ps.x,
         ps.y,
-        11.5,
-        8.2,
+        13.5,
+        9.0,
         floorZ + 0.4,
-        floorZ + 7.8,
+        floorZ + 8.0,
         { south: '#25334e', north: '#162036', east: '#1e2b44', west: '#131c30', top: '#2e3f60' },
-        'rgba(129, 140, 248, 0.45)'
+        'rgba(129, 140, 248, 0.46)'
       );
       fillQuad(
         ctx,
-        project(ps.x - 8.8, ps.y - 5.8, floorZ + 8.0),
-        project(ps.x + 8.8, ps.y - 5.8, floorZ + 8.0),
-        project(ps.x + 8.8, ps.y + 5.8, floorZ + 8.0),
-        project(ps.x - 8.8, ps.y + 5.8, floorZ + 8.0),
+        project(ps.x - 10.2, ps.y - 6.4, floorZ + 8.2),
+        project(ps.x + 10.2, ps.y - 6.4, floorZ + 8.2),
+        project(ps.x + 10.2, ps.y + 6.4, floorZ + 8.2),
+        project(ps.x - 10.2, ps.y + 6.4, floorZ + 8.2),
         '#192944',
         'rgba(56, 189, 248, 0.56)',
         0.95
       );
-      const podGlow = project(ps.x, ps.y, floorZ + 8.2);
-      stampSprite(ctx, assets.glowCyan, podGlow.sx, podGlow.sy, 13 * uiS, 8 * uiS, 0.22, true);
+      const podGlow = project(ps.x, ps.y, floorZ + 8.4);
+      stampSprite(ctx, assets.glowCyan, podGlow.sx, podGlow.sy, 14 * uiS, 9 * uiS, 0.22, true);
     }
+    drawPlanter(-147, 138, false);
+    drawGlassPartition(-218, 24, -170, 24, 12);
+    drawGlassPartition(-124, 24, -76, 24, 12);
+    drawGlassPartition(-76, 24, -76, 70, 12);
+    drawGlassPartition(-76, 104, -76, 148, 12);
 
     if (outHitboxes && cutaway > 0.35) {
-      const spC = project(wx - 99, wy + 44, floorZ + 4);
+      const spC = project(wx - 147, wy + 86, floorZ + 4);
       outHitboxes.push({
         type: 'hq_zone',
         kind: 'hq_zone',
         zone: 'sleep_pods',
         id: 'hq-zone-sleep-pods',
-        label: 'Slaapcapsules',
+        label: 'Focus & Slaapcapsules',
         depth: spC.depth - 20,
         sx: spC.sx,
-        topY: spC.sy - 48 * uiS,
-        botY: spC.sy + 44 * uiS,
-        rx: 46 * uiS,
+        topY: spC.sy - 52 * uiS,
+        botY: spC.sy + 50 * uiS,
+        rx: 66 * uiS,
       });
     }
 
     // =========================================================================
-    // WING 4: UI Design Studio & Lounge (East Wing: x 54..144, y -14..100)
+    // WING 4: Kitchen & Coffee Lounge (SE: x 76..218, y 24..148)
     // =========================================================================
     const isLoungeZoneHov = hoveredKind === 'hq_zone' && hoveredId === 'hq-zone-lounge';
     const isLoungeZoneSel = selectedKind === 'hq_zone' && selectedId === 'hq-zone-lounge';
     fillQuad(
       ctx,
-      project(wx + 54, wy - 14, floorZ + 0.35),
-      project(wx + 144, wy - 14, floorZ + 0.35),
-      project(wx + 144, wy + 100, floorZ + 0.35),
-      project(wx + 54, wy + 100, floorZ + 0.35),
+      project(wx + 76, wy + 24, floorZ + 0.35),
+      project(wx + 218, wy + 24, floorZ + 0.35),
+      project(wx + 218, wy + 148, floorZ + 0.35),
+      project(wx + 76, wy + 148, floorZ + 0.35),
       isLoungeZoneHov ? 'rgba(68, 52, 38, 0.92)' : 'rgba(52, 39, 29, 0.88)',
-      isLoungeZoneSel ? '#f472b6' : isLoungeZoneHov ? '#f9a8d4' : 'rgba(52, 211, 153, 0.44)',
+      isLoungeZoneSel ? '#f472b6' : isLoungeZoneHov ? '#f9a8d4' : 'rgba(52, 211, 153, 0.42)',
       Math.max(1.1, (isLoungeZoneHov || isLoungeZoneSel ? 2.2 : 1.1) * uiS)
     );
+    // Warm oak plank lines
     ctx.strokeStyle = 'rgba(253, 230, 138, 0.08)';
-    ctx.lineWidth = Math.max(0.5, 0.7 * uiS);
-    for (let wyLine = -4; wyLine <= 92; wyLine += 10) {
-      const p0 = project(wx + 56, wy + wyLine, floorZ + 0.4);
-      const p1 = project(wx + 142, wy + wyLine, floorZ + 0.4);
+    ctx.lineWidth = Math.max(0.5, 0.65 * uiS);
+    for (let wyLine = 34; wyLine <= 142; wyLine += 12) {
+      const p0 = project(wx + 78, wy + wyLine, floorZ + 0.4);
+      const p1 = project(wx + 216, wy + wyLine, floorZ + 0.4);
       ctx.beginPath();
       ctx.moveTo(p0.sx, p0.sy);
       ctx.lineTo(p1.sx, p1.sy);
       ctx.stroke();
     }
+    // Cozy woven lounge rug under sofa zone
+    fillQuad(
+      ctx,
+      project(wx + 126, wy + 72, floorZ + 0.42),
+      project(wx + 206, wy + 72, floorZ + 0.42),
+      project(wx + 206, wy + 138, floorZ + 0.42),
+      project(wx + 126, wy + 138, floorZ + 0.42),
+      'rgba(30, 58, 52, 0.52)',
+      'rgba(110, 231, 183, 0.25)',
+      0.8
+    );
 
-    // Coffee Bar Counter
+    // Kitchenette & Espresso Coffee Bar Counter + 3 Bar Stools
     drawExtrudedBox3D(
       ctx,
       project,
-      wx + 99,
-      wy,
-      24,
-      6.0,
+      wx + 156,
+      wy + 40,
+      36,
+      7.0,
       floorZ + 0.4,
-      floorZ + 8.0,
-      { south: '#3b281d', north: '#261912', east: '#2e1f17', west: '#211610', top: '#8c6244' },
+      floorZ + 8.4,
+      { south: '#3b281d', north: '#261912', east: '#2e1f17', west: '#211610', top: '#9c7152' },
       'rgba(253, 230, 138, 0.34)'
     );
-    const cofGlow = project(wx + 105, wy, floorZ + 10);
-    stampSprite(ctx, assets.glowTungsten, cofGlow.sx, cofGlow.sy, 18 * uiS, 11 * uiS, 0.56, true);
+    // Espresso machine & kitchen sink accent on counter
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx + 176,
+      wy + 38,
+      5.5,
+      4.0,
+      floorZ + 8.4,
+      floorZ + 12.8,
+      { south: '#475569', north: '#334155', east: '#3e4c5e', west: '#1e293b', top: '#94a3b8' }
+    );
+    for (const sx of [136, 156, 176]) {
+      drawChair(sx, 54, '#785035');
+    }
+    const cofGlow = project(wx + 160, wy + 40, floorZ + 11);
+    stampSprite(ctx, assets.glowTungsten, cofGlow.sx, cofGlow.sy, 22 * uiS, 12 * uiS, 0.54, true);
 
-    // Cozy Emerald Sofas + Spacious Meeting/Design Table
+    // Emerald L-Sofas + Coffee Table + Breakout Cafe Table
     drawExtrudedBox3D(
       ctx,
       project,
-      wx + 128,
-      wy + 44,
-      6.5,
-      20,
+      wx + 196,
+      wy + 98,
+      7.2,
+      24,
       floorZ + 0.4,
-      floorZ + 6.5,
+      floorZ + 6.8,
       { south: '#145345', north: '#0c362d', east: '#104439', west: '#0b3028', top: '#1d6f5c' },
       'rgba(110, 231, 183, 0.36)'
     );
     drawExtrudedBox3D(
       ctx,
       project,
-      wx + 96,
-      wy + 82,
-      20,
-      6.5,
+      wx + 158,
+      wy + 130,
+      26,
+      7.0,
       floorZ + 0.4,
-      floorZ + 6.5,
+      floorZ + 6.8,
       { south: '#145345', north: '#0c362d', east: '#104439', west: '#0b3028', top: '#1d6f5c' },
       'rgba(110, 231, 183, 0.36)'
     );
     drawExtrudedBox3D(
       ctx,
       project,
-      wx + 94,
-      wy + 44,
-      13,
-      9.5,
+      wx + 158,
+      wy + 98,
+      14,
+      10,
       floorZ + 0.4,
-      floorZ + 4.8,
+      floorZ + 5.0,
       { south: '#6b4730', north: '#472d1d', east: '#593a26', west: '#3d2618', top: '#946642' }
     );
+    // Breakout cafe table + 2 chairs on west side of lounge
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx + 102,
+      wy + 98,
+      9.0,
+      9.0,
+      floorZ + 0.4,
+      floorZ + 6.6,
+      { south: '#593a26', north: '#3b2517', east: '#4a301e', west: '#332014', top: '#8c6244' }
+    );
+    drawChair(102, 82, '#475569');
+    drawChair(102, 114, '#475569');
 
-    // 3 Indoor Bonsai / Sakura Planters
-    for (const bp of [
-      { x: wx + 66, y: wy },
-      { x: wx + 134, y: wy + 88 },
-      { x: wx + 64, y: wy + 86 },
-    ]) {
-      drawExtrudedBox3D(
-        ctx,
-        project,
-        bp.x,
-        bp.y,
-        4.5,
-        4.5,
-        floorZ + 0.4,
-        floorZ + 4.8,
-        { south: '#475569', north: '#334155', east: '#3e4c5e', west: '#2a3545', top: '#3f2e21' }
-      );
-      const bTop = project(bp.x, bp.y, floorZ + 11.5);
-      ctx.fillStyle = '#34d399';
-      ctx.beginPath();
-      ctx.ellipse(bTop.sx, bTop.sy, 6.0 * uiS, 4.2 * uiS, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#f9a8d4';
-      ctx.beginPath();
-      ctx.ellipse(bTop.sx + 2.2 * uiS, bTop.sy - 1.6 * uiS, 3.0 * uiS, 2.2 * uiS, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    drawPlanter(88, 38, true);
+    drawPlanter(206, 138, true);
+    drawPlanter(88, 138, false);
+    drawGlassPartition(76, 24, 124, 24, 12);
+    drawGlassPartition(170, 24, 218, 24, 12);
+    drawGlassPartition(76, 24, 76, 70, 12);
+    drawGlassPartition(76, 104, 76, 148, 12);
 
-    const loungeGlow = project(wx + 96, wy + 44, floorZ + 8);
-    stampSprite(ctx, assets.glowEmerald, loungeGlow.sx, loungeGlow.sy, 32 * uiS, 20 * uiS, 0.26, true);
+    const loungeGlow = project(wx + 158, wy + 98, floorZ + 8);
+    stampSprite(ctx, assets.glowEmerald, loungeGlow.sx, loungeGlow.sy, 34 * uiS, 22 * uiS, 0.24, true);
 
     if (outHitboxes && cutaway > 0.35) {
-      const lgC = project(wx + 99, wy + 44, floorZ + 4);
+      const lgC = project(wx + 147, wy + 86, floorZ + 4);
       outHitboxes.push({
         type: 'hq_zone',
         kind: 'hq_zone',
         zone: 'lounge',
         id: 'hq-zone-lounge',
-        label: 'UI Studio & Lounge',
+        label: 'Kitchen & Coffee Lounge',
         depth: lgC.depth - 20,
         sx: lgC.sx,
-        topY: lgC.sy - 48 * uiS,
-        botY: lgC.sy + 44 * uiS,
-        rx: 46 * uiS,
+        topY: lgC.sy - 52 * uiS,
+        botY: lgC.sy + 50 * uiS,
+        rx: 66 * uiS,
       });
     }
 
     // =========================================================================
-    // WING 5: Directie & Commandocentrum (South-Center: x -44..44, y 24..104)
+    // WING 5: Directie & Reception Lobby (South-Center: x -60..60, y 24..148)
     // =========================================================================
     const isForemanSel = selectedKind === 'foreman';
     const isForemanHov = hoveredKind === 'foreman';
@@ -3943,106 +4143,126 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
     const isCmdZoneSel = selectedKind === 'hq_zone' && selectedId === 'hq-zone-command';
     fillQuad(
       ctx,
-      project(wx - 44, wy + 24, floorZ + 0.35),
-      project(wx + 44, wy + 24, floorZ + 0.35),
-      project(wx + 44, wy + 104, floorZ + 0.35),
-      project(wx - 44, wy + 104, floorZ + 0.35),
-      isForemanHov || isCmdZoneHov ? 'rgba(66, 46, 18, 0.76)' : 'rgba(44, 31, 14, 0.66)',
-      isForemanSel || isCmdZoneSel ? '#38bdf8' : isForemanHov || isCmdZoneHov ? '#fde68a' : 'rgba(251, 191, 36, 0.58)',
+      project(wx - 60, wy + 24, floorZ + 0.35),
+      project(wx + 60, wy + 24, floorZ + 0.35),
+      project(wx + 60, wy + 148, floorZ + 0.35),
+      project(wx - 60, wy + 148, floorZ + 0.35),
+      isForemanHov || isCmdZoneHov ? 'rgba(66, 46, 18, 0.76)' : 'rgba(42, 30, 14, 0.66)',
+      isForemanSel || isCmdZoneSel ? '#38bdf8' : isForemanHov || isCmdZoneHov ? '#fde68a' : 'rgba(251, 191, 36, 0.54)',
       Math.max(1.1, (isForemanHov || isForemanSel || isCmdZoneHov ? 2.2 : 1.1) * uiS)
     );
 
-    // Kuroda's Executive Command Desk + Dual Monitors
+    // Kuroda's Executive Command Desk + Dual Monitors + Chair
     drawExtrudedBox3D(
       ctx,
       project,
-      wx - 12,
-      wy + 48,
-      18,
-      7.2,
+      wx - 18,
+      wy + 66,
+      19,
+      7.5,
       floorZ + 0.4,
       floorZ + 9.0,
       { south: '#784824', north: '#4d2d16', east: '#61391c', west: '#422612', top: '#4a301a' },
       '#f59e0b'
     );
-    const monGlow = project(wx - 12, wy + 46, floorZ + 12.2);
-    stampSprite(ctx, assets.glowGold, monGlow.sx, monGlow.sy, 30 * uiS, 18 * uiS, 0.52, true);
+    drawChair(-18, 80, '#1e293b');
+    const monGlow = project(wx - 18, wy + 64, floorZ + 12.2);
+    stampSprite(ctx, assets.glowGold, monGlow.sx, monGlow.sy, 32 * uiS, 18 * uiS, 0.50, true);
     fillQuad(
       ctx,
-      project(wx - 23, wy + 45, floorZ + 9.4),
-      project(wx - 13, wy + 45, floorZ + 9.4),
-      project(wx - 13, wy + 45, floorZ + 14.8),
-      project(wx - 23, wy + 45, floorZ + 14.8),
+      project(wx - 30, wy + 63, floorZ + 9.4),
+      project(wx - 19, wy + 63, floorZ + 9.4),
+      project(wx - 19, wy + 63, floorZ + 14.8),
+      project(wx - 30, wy + 63, floorZ + 14.8),
       'rgba(251, 191, 36, 0.88)',
       '#fef3c7',
       0.9
     );
     fillQuad(
       ctx,
-      project(wx - 10, wy + 45, floorZ + 9.4),
-      project(wx, wy + 45, floorZ + 9.4),
-      project(wx, wy + 45, floorZ + 14.8),
-      project(wx - 10, wy + 45, floorZ + 14.8),
+      project(wx - 16, wy + 63, floorZ + 9.4),
+      project(wx - 5, wy + 63, floorZ + 9.4),
+      project(wx - 5, wy + 63, floorZ + 14.8),
+      project(wx - 16, wy + 63, floorZ + 14.8),
       'rgba(56, 189, 248, 0.84)',
       '#e0f2fe',
       0.9
     );
 
-    // Teamleider / Projectmanager Meeting & Blueprint Table
+    // Strategy & Blueprint Table
     drawExtrudedBox3D(
       ctx,
       project,
-      wx + 24,
-      wy + 52,
-      12,
-      8.5,
+      wx + 28,
+      wy + 68,
+      14,
+      9.5,
       floorZ + 0.4,
       floorZ + 7.2,
       { south: '#334155', north: '#1e293b', east: '#283548', west: '#182130', top: '#1e3a5f' },
-      'rgba(167, 139, 250, 0.58)'
+      'rgba(167, 139, 250, 0.56)'
     );
     fillQuad(
       ctx,
-      project(wx + 15, wy + 46, floorZ + 7.5),
-      project(wx + 33, wy + 46, floorZ + 7.5),
-      project(wx + 33, wy + 58, floorZ + 7.5),
-      project(wx + 15, wy + 58, floorZ + 7.5),
+      project(wx + 17, wy + 61, floorZ + 7.5),
+      project(wx + 39, wy + 61, floorZ + 7.5),
+      project(wx + 39, wy + 75, floorZ + 7.5),
+      project(wx + 17, wy + 75, floorZ + 7.5),
       'rgba(14, 116, 144, 0.82)',
       'rgba(186, 230, 253, 0.72)',
       0.75
     );
+    drawChair(28, 84, '#334155');
+
+    // Modern Reception / Lobby Desk + Visitor Armchairs + Wide Glass Entrance
+    drawExtrudedBox3D(
+      ctx,
+      project,
+      wx,
+      wy + 116,
+      20,
+      5.5,
+      floorZ + 0.4,
+      floorZ + 8.6,
+      { south: '#334155', north: '#1e293b', east: '#283548', west: '#172030', top: '#cbd5e1' },
+      'rgba(56, 189, 248, 0.48)'
+    );
+    drawChair(-42, 122, '#1d6f5c');
+    drawChair(42, 122, '#1d6f5c');
+    drawPlanter(-48, 138, false);
+    drawPlanter(48, 138, false);
 
     // Wide Entrance Hall & Welcome Doormat at South Center Wall
     fillQuad(
       ctx,
-      project(wx - 16, wy + 95, floorZ + 0.45),
-      project(wx + 16, wy + 95, floorZ + 0.45),
-      project(wx + 16, wy + 102.5, floorZ + 0.45),
-      project(wx - 16, wy + 102.5, floorZ + 0.45),
+      project(wx - 22, wy + 136, floorZ + 0.45),
+      project(wx + 22, wy + 136, floorZ + 0.45),
+      project(wx + 22, wy + 146, floorZ + 0.45),
+      project(wx - 22, wy + 146, floorZ + 0.45),
       '#1e293b',
       'rgba(56, 189, 248, 0.75)',
       1.3
     );
 
     if (outHitboxes && cutaway > 0.35) {
-      const cmC = project(wx, wy + 64, floorZ + 4);
+      const cmC = project(wx, wy + 86, floorZ + 4);
       outHitboxes.push({
         type: 'hq_zone',
         kind: 'hq_zone',
         zone: 'command',
         id: 'hq-zone-command',
-        label: 'Directie & Commandocentrum',
+        label: 'Reception & Directie',
         depth: cmC.depth - 18,
         sx: cmC.sx,
-        topY: cmC.sy - 34 * uiS,
-        botY: cmC.sy + 34 * uiS,
-        rx: 46 * uiS,
+        topY: cmC.sy - 48 * uiS,
+        botY: cmC.sy + 48 * uiS,
+        rx: 58 * uiS,
       });
     }
 
     // Room floor captions cleanly positioned at bottom edge of each wing
-    if (cutaway > 0.45 && s >= 1.2) {
-      const lblFont = `700 ${Math.max(9.5, Math.min(13, Math.round(1.6 * s + 4.5)))}px ${FONT_MONO}`;
+    if (cutaway > 0.45 && s >= 1.0) {
+      const lblFont = `700 ${Math.max(9, Math.min(12.5, Math.round(1.4 * s + 4.5)))}px ${FONT_MONO}`;
       ctx.font = lblFont;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -4051,11 +4271,12 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
         ctx.fillStyle = col;
         ctx.fillText(text, p.sx, p.sy);
       };
-      drawRoomLbl(-80, -31, 'ENGINEERING · WAR ROOM', 'rgba(125, 211, 252, 0.88)');
-      drawRoomLbl(80, -31, 'SECURITY SOC · QA LAB', 'rgba(94, 234, 212, 0.88)');
-      drawRoomLbl(-99, 95, 'SLAAPCAPSULES', 'rgba(165, 180, 252, 0.88)');
-      drawRoomLbl(99, 95, 'UI STUDIO · LOUNGE', 'rgba(249, 168, 212, 0.88)');
-      drawRoomLbl(0, 90, 'DIRECTIE · COMMANDO', 'rgba(253, 230, 138, 0.90)');
+      drawRoomLbl(-154, -27, 'OPEN-PLAN DEV', 'rgba(125, 211, 252, 0.88)');
+      drawRoomLbl(-58, -27, 'MEETING', 'rgba(186, 230, 253, 0.86)');
+      drawRoomLbl(120, -27, 'SERVER · QA & SOC LAB', 'rgba(94, 234, 212, 0.88)');
+      drawRoomLbl(-147, 142, 'FOCUS · SLAAPCAPSULES', 'rgba(165, 180, 252, 0.88)');
+      drawRoomLbl(147, 142, 'KITCHEN · COFFEE LOUNGE', 'rgba(249, 168, 212, 0.88)');
+      drawRoomLbl(0, 130, 'RECEPTION · DIRECTIE', 'rgba(253, 230, 138, 0.90)');
     }
 
     // --- Subtle Glowing RPG Director/Player Foot-Ring on HQ Floor ---
@@ -4081,8 +4302,8 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
 
     const foremanId = foreman.id || 'foreman-uitvoerder';
     const fMot = motionMap?.get(foremanId);
-    const foremanX = fMot ? wx + fMot.x : wx - 12;
-    const foremanY = fMot ? wy + fMot.y : wy + 62;
+    const foremanX = fMot ? wx + fMot.x : wx - 18;
+    const foremanY = fMot ? wy + fMot.y : wy + 82;
     interiorEntities.push({
       kind: 'foreman',
       id: foremanId,
@@ -4095,7 +4316,7 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
       isWalking: fMot ? fMot.isWalking : false,
       walkCycle: fMot ? fMot.walkPhase : 0,
       facing: fMot ? fMot.facing : 1,
-      label: `${foreman.role || 'Uitvoerder'} · ${foreman.name || 'Kuroda'}`,
+      label: formatCompactAgentTag(foreman, 'Dir'),
       accent: '#fbbf24',
       prio: 3,
       depth: project(foremanX, foremanY, floorZ + 8).depth,
@@ -4115,13 +4336,13 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
         data: ag,
         wx: ax,
         wy: ay,
-        wz: floorZ + 7.8,
+        wz: floorZ + 8.0,
         mode: 'sleeping',
         color: agCol,
         isWalking: false,
         walkCycle: 0,
         facing: 1,
-        label: `${ag.name || 'Agent'} · ${ag.specialtyLabel || 'Slaapt'}`,
+        label: formatCompactAgentTag(ag, 'Dev'),
         accent: agCol,
         prio: 1,
         depth: project(ax, ay, floorZ + 8).depth,
@@ -4129,17 +4350,18 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
     }
 
     const roamFallbackSlots = [
-      { x: wx + 84, y: wy + 20 },
-      { x: wx + 108, y: wy + 62 },
-      { x: wx - 82, y: wy - 44 },
-      { x: wx + 78, y: wy - 42 },
-      { x: wx, y: wy - 2 },
+      { x: wx + 132, y: wy + 70 },
+      { x: wx + 118, y: wy + 118 },
+      { x: wx - 154, y: wy - 42 },
+      { x: wx + 118, y: wy - 48 },
+      { x: wx, y: wy + 2 },
+      { x: wx - 58, y: wy - 38 },
     ];
     for (let i = 0; i < loungeAgents.length; i++) {
       const ag = loungeAgents[i];
       const lMot = motionMap?.get(ag.id);
       const slot = roamFallbackSlots[i % roamFallbackSlots.length];
-      const ax = lMot ? wx + lMot.x : slot.x + (i >= roamFallbackSlots.length ? 8 : 0);
+      const ax = lMot ? wx + lMot.x : slot.x + (i >= roamFallbackSlots.length ? 10 : 0);
       const ay = lMot ? wy + lMot.y : slot.y;
       const agSeed = hashString(ag.id || ag.name);
       const agCol = resolveAgentColor(ag, agSeed);
@@ -4155,7 +4377,7 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
         isWalking: lMot ? lMot.isWalking : false,
         walkCycle: lMot ? lMot.walkPhase : 0,
         facing: lMot ? lMot.facing : 1,
-        label: `${ag.name || 'Agent'} · ${ag.specialtyLabel || ag.role || 'Standby'}`,
+        label: formatCompactAgentTag(ag, 'Dev'),
         accent: agCol,
         prio: 2,
         depth: project(ax, ay, floorZ + 8).depth,
@@ -4218,10 +4440,10 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
       }
 
       if (cutaway > 0.38 && headPos) {
-        const tagScale = Math.min(1.02, Math.max(0.84, s * 0.22));
+        const tagScale = Math.min(0.96, Math.max(0.80, s * 0.21));
         tagDraws.push({
           sx: headPos.sx,
-          sy: headPos.sy - (ent.mode === 'sleeping' ? 14 : 20) * Math.min(2.2, Math.max(1.0, s * 0.42)),
+          sy: headPos.sy - (ent.mode === 'sleeping' ? 13 : 18) * Math.min(2.1, Math.max(1.0, s * 0.40)),
           label: ent.label,
           accent: isSel ? '#38bdf8' : ent.accent,
           bg: ent.kind === 'foreman' ? 'rgba(34, 24, 10, 0.94)' : 'rgba(11, 17, 28, 0.92)',
@@ -4237,15 +4459,15 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
     const tagAlpha = Math.min(1, (cutaway - 0.32) * 2.2);
     for (let i = 0; i < tagDraws.length; i++) {
       const td = tagDraws[i];
-      const estW = Math.min(165, td.label.length * 6.2 * td.scale + 22);
-      const estH = Math.max(16, 17 * td.scale);
+      const estW = Math.min(118, td.label.length * 5.8 * td.scale + 18);
+      const estH = Math.max(14, 15 * td.scale);
       let y = td.sy;
       for (let attempt = 0; attempt < 3; attempt++) {
         let hit = false;
         for (let j = 0; j < placedTags.length; j++) {
           const p = placedTags[j];
-          if (Math.abs(td.sx - p.x) < (estW + p.w) * 0.5 + 5 && Math.abs(y - p.y) < (estH + p.h) * 0.5 + 4) {
-            y = p.y - (estH + p.h) * 0.5 - 5;
+          if (Math.abs(td.sx - p.x) < (estW + p.w) * 0.5 + 4 && Math.abs(y - p.y) < (estH + p.h) * 0.5 + 3) {
+            y = p.y - (estH + p.h) * 0.5 - 4;
             hit = true;
             break;
           }
@@ -4267,7 +4489,7 @@ export function drawHoofdkantoor3D(ctx, project, wx, wy, hqData, state, time, re
         `[E] ${nr.promptLabel || nr.label || 'Interactie'}`,
         '#38bdf8',
         'rgba(8, 20, 36, 0.96)',
-        0.90,
+        0.88,
         Math.min(1, (cutaway - 0.5) * 2.5)
       );
     }

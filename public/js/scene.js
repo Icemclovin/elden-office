@@ -102,12 +102,18 @@ export function createCityScene(canvas, callbacks = {}) {
   let hqCutaway = 0;
   let lastNotifiedHQMode = false;
 
-  // RPG camera floor-walker state (spacious 300x220 HQ-local coords clamped inside [-138..138] x [-98..98])
+  // RPG camera floor-walker state (spacious 460x320 HQ-local coords clamped inside [-214..214] x [-144..144])
+  const HQ_WALK_X = 214;
+  const HQ_WALK_Y = 144;
+  const HQ_FLOOR_CLICK_X = 228;
+  const HQ_FLOOR_CLICK_Y = 158;
+  const HQ_EXIT_ZOOM = 1.15;
+
   const rpg = {
     x: 0,
-    y: 12,
+    y: 6,
     targetX: 0,
-    targetY: 12,
+    targetY: 6,
     nearest: null,
   };
   const keys = {
@@ -117,24 +123,48 @@ export function createCityScene(canvas, callbacks = {}) {
     right: false,
   };
 
-  // Persistent zero-GC autonomous walking state across spacious atrium & all 5 HQ wings
+  // Persistent zero-GC autonomous walking state across spacious 460x320 atrium & all 5 HQ wings
   const agentMotion = new Map();
   const LOUNGE_WAYPOINTS = [
-    { x: 84, y: 20 },
-    { x: 108, y: 62 },
-    { x: 78, y: -42 },
-    { x: 34, y: -38 },
-    { x: -36, y: -42 },
-    { x: -82, y: -44 },
-    { x: 0, y: -2 },
-    { x: -24, y: 20 },
-    { x: 40, y: 36 },
+    { x: 46, y: 2 },
+    { x: 126, y: 24 },
+    { x: 112, y: 34 },
+    { x: 116, y: 66 },
+    { x: 146, y: 70 },
+    { x: 118, y: 122 },
+    { x: 116, y: 66 },
+    { x: 112, y: 34 },
+    { x: 126, y: 24 },
+    { x: 120, y: -20 },
+    { x: 80, y: -48 },
+    { x: 118, y: -104 },
+    { x: 160, y: -48 },
+    { x: 120, y: -20 },
+    { x: 0, y: 2 },
+    { x: -46, y: 2 },
+    { x: -120, y: -20 },
+    { x: -118, y: -42 },
+    { x: -158, y: -88 },
+    { x: -88, y: -84 },
+    { x: -58, y: -84 },
+    { x: -88, y: -84 },
+    { x: -118, y: -42 },
+    { x: -120, y: -20 },
+    { x: -46, y: 2 },
+    { x: 0, y: 2 },
   ];
   const FOREMAN_WAYPOINTS = [
-    { x: -12, y: 62, pause: 5.0 },
-    { x: 0, y: 4, pause: 2.0 },
-    { x: -78, y: -84, pause: 3.6 },
-    { x: 24, y: 66, pause: 2.8 },
+    { x: -18, y: 82, pause: 5.0 },
+    { x: 10, y: 76, pause: 0.3 },
+    { x: 0, y: 36, pause: 1.5 },
+    { x: 0, y: 2, pause: 2.2 },
+    { x: -46, y: 2, pause: 1.2 },
+    { x: -120, y: -20, pause: 1.2 },
+    { x: -118, y: -42, pause: 3.4 },
+    { x: -120, y: -20, pause: 0.4 },
+    { x: -46, y: 2, pause: 1.0 },
+    { x: 0, y: 36, pause: 1.0 },
+    { x: 24, y: 96, pause: 3.0 },
   ];
   const SITE_WAYPOINTS = [
     { x: 24, y: 28 },
@@ -606,7 +636,7 @@ export function createCityScene(canvas, callbacks = {}) {
     clearHover();
     userMovedCamera = true;
     cam.targetZoom = Math.max(0.38, cam.targetZoom / 1.24);
-    if (hqFocused && cam.targetZoom < 2.2) {
+    if (hqFocused && cam.targetZoom < HQ_EXIT_ZOOM) {
       hqFocused = false;
       notifyHQMode(false);
     }
@@ -658,42 +688,42 @@ export function createCityScene(canvas, callbacks = {}) {
     const wp = gridToWorld(hqData?.gridX ?? 0, hqData?.gridY ?? 0);
     const availW = viewW >= 1100 ? viewW - 380 : viewW - 48;
     const availH = Math.max(360, viewH - 128);
-    const baseZ = Math.max(2.2, Math.min(3.6, Math.min(availW / 322, availH / 212)));
-    const roomZ = Math.max(5.8, Math.min(7.2, baseZ * 1.95));
+    const baseZ = Math.max(1.45, Math.min(3.2, Math.min(availW / 490, availH / 300)));
+    const roomZ = Math.max(3.6, Math.min(5.6, baseZ * 2.1));
 
     let ox = 0;
-    let oy = 0;
+    let oy = 6;
     let targetZ = baseZ;
     let targetPitch = (52 * Math.PI) / 180;
     if (zone === 'command') {
       ox = 0;
-      oy = 62;
+      oy = 86;
       targetZ = roomZ;
       targetPitch = (50 * Math.PI) / 180;
     } else if (zone === 'sleep_pods') {
-      ox = -98;
-      oy = 42;
+      ox = -147;
+      oy = 86;
       targetZ = roomZ;
       targetPitch = (52 * Math.PI) / 180;
     } else if (zone === 'war_room') {
-      ox = -80;
-      oy = -64;
+      ox = -120;
+      oy = -84;
       targetZ = roomZ;
       targetPitch = (50 * Math.PI) / 180;
     } else if (zone === 'lab') {
-      ox = 80;
-      oy = -64;
+      ox = 120;
+      oy = -84;
       targetZ = roomZ;
       targetPitch = (50 * Math.PI) / 180;
     } else if (zone === 'lounge') {
-      ox = 98;
-      oy = 42;
+      ox = 147;
+      oy = 86;
       targetZ = roomZ;
       targetPitch = (52 * Math.PI) / 180;
     }
     const drawerShiftX = viewW >= 1100 ? 180 / targetZ : 0;
     rpg.targetX = zone === 'overview' ? 0 : ox;
-    rpg.targetY = zone === 'overview' ? 12 : oy;
+    rpg.targetY = zone === 'overview' ? 6 : oy;
     cam.targetX = wp.x + ox + drawerShiftX;
     cam.targetY = wp.y + oy;
     cam.targetPitch = targetPitch;
@@ -1007,10 +1037,10 @@ export function createCityScene(canvas, callbacks = {}) {
         const hqW = gridToWorld(hqData?.gridX ?? 0, hqData?.gridY ?? 0);
         const lx = w.x - hqW.x;
         const ly = w.y - hqW.y;
-        if (Math.abs(lx) <= 148 && Math.abs(ly) <= 108) {
-          rpg.targetX = Math.max(-138, Math.min(138, lx));
-          rpg.targetY = Math.max(-98, Math.min(98, ly));
-          const drawerShiftX = viewW >= 1100 ? 180 / Math.max(2.2, cam.targetZoom) : 0;
+        if (Math.abs(lx) <= HQ_FLOOR_CLICK_X && Math.abs(ly) <= HQ_FLOOR_CLICK_Y) {
+          rpg.targetX = Math.max(-HQ_WALK_X, Math.min(HQ_WALK_X, lx));
+          rpg.targetY = Math.max(-HQ_WALK_Y, Math.min(HQ_WALK_Y, ly));
+          const drawerShiftX = viewW >= 1100 ? 180 / Math.max(1.45, cam.targetZoom) : 0;
           cam.targetX = hqW.x + rpg.targetX + drawerShiftX;
           cam.targetY = hqW.y + rpg.targetY;
           if (reducedMotion) {
@@ -1044,7 +1074,7 @@ export function createCityScene(canvas, callbacks = {}) {
     userMovedCamera = true;
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
     cam.targetZoom = Math.max(0.38, Math.min(12.0, cam.targetZoom * factor));
-    if (hqFocused && cam.targetZoom < 2.2) {
+    if (hqFocused && cam.targetZoom < HQ_EXIT_ZOOM) {
       hqFocused = false;
       notifyHQMode(false);
       cam.targetYaw = DEFAULT_YAW;
@@ -1512,9 +1542,9 @@ export function createCityScene(canvas, callbacks = {}) {
       targetCutaway = 1;
     } else if (cam.zoom > 1.52) {
       const dist = Math.hypot(cam.x - hqW.x, cam.y - hqW.y);
-      if (dist < 220) {
+      if (dist < 260) {
         const zoomFactor = Math.min(1, (cam.zoom - 1.52) / 0.82);
-        const distFactor = Math.min(1, (220 - dist) / 110);
+        const distFactor = Math.min(1, (260 - dist) / 130);
         targetCutaway = zoomFactor * distFactor;
       }
     }
@@ -1527,15 +1557,15 @@ export function createCityScene(canvas, callbacks = {}) {
       const moveF = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
       if (moveR !== 0 || moveF !== 0) {
         const len = Math.hypot(moveR, moveF) || 1;
-        const speed = 86 * dt;
+        const speed = 115 * dt;
         const cY = Math.cos(cam.yaw);
         const sY = Math.sin(cam.yaw);
         const dx = ((moveR / len) * cY + (moveF / len) * -sY) * speed;
         const dy = ((moveR / len) * -sY + (moveF / len) * -cY) * speed;
-        rpg.targetX = Math.max(-138, Math.min(138, rpg.targetX + dx));
-        rpg.targetY = Math.max(-98, Math.min(98, rpg.targetY + dy));
-        if (cam.targetZoom < 5.6) cam.targetZoom = 6.2;
-        const drawerShiftX = viewW >= 1100 ? 180 / Math.max(2.2, cam.targetZoom) : 0;
+        rpg.targetX = Math.max(-HQ_WALK_X, Math.min(HQ_WALK_X, rpg.targetX + dx));
+        rpg.targetY = Math.max(-HQ_WALK_Y, Math.min(HQ_WALK_Y, rpg.targetY + dy));
+        if (cam.targetZoom < 3.4) cam.targetZoom = 3.8;
+        const drawerShiftX = viewW >= 1100 ? 180 / Math.max(1.45, cam.targetZoom) : 0;
         cam.targetX = hqW.x + rpg.targetX + drawerShiftX;
         cam.targetY = hqW.y + rpg.targetY;
         userMovedCamera = true;
@@ -1604,7 +1634,7 @@ export function createCityScene(canvas, callbacks = {}) {
 
     // 1. Uitvoerder Kuroda
     const foremanId = hqData?.foreman?.id || 'foreman-uitvoerder';
-    stepWalker(foremanId, FOREMAN_WAYPOINTS, 13.5, 3.0, 0);
+    stepWalker(foremanId, FOREMAN_WAYPOINTS, 18.0, 3.0, 0);
 
     // 2. HQ standby agents (lounge / war_room / lab) + active site working agents
     for (let i = 0; i < roster.length; i++) {
@@ -1615,7 +1645,7 @@ export function createCityScene(canvas, callbacks = {}) {
         ag.zone === 'lab' ||
         (ag.location === 'hq' && ag.zone !== 'sleep_pods' && ag.status !== 'sleeping');
       if (isHQRoam) {
-        stepWalker(ag.id, LOUNGE_WAYPOINTS, 15.5, 2.2, i);
+        stepWalker(ag.id, LOUNGE_WAYPOINTS, 20.0, 2.2, i);
       } else if (ag.status === 'working') {
         stepWalker(ag.id, SITE_WAYPOINTS, 13.0, 2.5, i);
       }
@@ -1630,7 +1660,7 @@ export function createCityScene(canvas, callbacks = {}) {
     // Update nearest HQ interactable for [E] prompt
     if (hqFocused || hqCutaway > 0.45) {
       let best = null;
-      let bestD = 44;
+      let bestD = 52;
       const checkCand = (lx, ly, kind, id, promptLabel, payload) => {
         const d = Math.hypot(lx - rpg.x, ly - rpg.y);
         if (d < bestD) {
@@ -1641,14 +1671,14 @@ export function createCityScene(canvas, callbacks = {}) {
       const fM = agentMotion.get(foremanId);
       const fm = hqData?.foreman || { id: foremanId, name: 'Kuroda', role: 'Uitvoerder' };
       checkCand(
-        fM ? fM.x : -12,
-        fM ? fM.y : 62,
+        fM ? fM.x : -18,
+        fM ? fM.y : 82,
         'foreman',
         foremanId,
         `Spreek ${fm.name || 'Kuroda'}`,
         { type: 'foreman', kind: 'foreman', id: foremanId, foreman: fm }
       );
-      checkCand(-80, -104, 'hq_holo', 'hq-holo-display', 'Stadsstatus Holo', {
+      checkCand(-154, -157, 'hq_holo', 'hq-holo-display', 'Stadsstatus Holo', {
         type: 'hq_holo',
         kind: 'hq_holo',
         id: 'hq-holo-display',
@@ -1658,8 +1688,21 @@ export function createCityScene(canvas, callbacks = {}) {
         const ag = roster[i];
         if (ag.location !== 'hq' && ag.zone !== 'sleep_pods' && ag.zone !== 'lounge' && ag.zone !== 'war_room' && ag.zone !== 'lab') continue;
         const m = agentMotion.get(ag.id);
-        const ax = m ? m.x : ag.zone === 'sleep_pods' || ag.status === 'sleeping' ? -98 : 88;
-        const ay = m ? m.y : ag.zone === 'sleep_pods' || ag.status === 'sleeping' ? 42 : 28;
+        let ax = 147;
+        let ay = 86;
+        if (m) {
+          ax = m.x;
+          ay = m.y;
+        } else if (ag.zone === 'sleep_pods' || ag.status === 'sleeping') {
+          ax = -147;
+          ay = 86;
+        } else if (ag.zone === 'war_room') {
+          ax = -120;
+          ay = -84;
+        } else if (ag.zone === 'lab') {
+          ax = 120;
+          ay = -84;
+        }
         checkCand(ax, ay, 'agent', ag.id, ag.name || 'Agent', {
           type: 'agent',
           kind: 'agent',
